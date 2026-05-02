@@ -113,7 +113,7 @@ describe('runScheduler()', () => {
   it('aborts in-flight workers when AbortSignal fires', async () => {
     const g = graph({ a: [] });
     const run: RunWorkerFn = vi.fn(async (_n, signal): Promise<WorkerRunResult> => {
-      await new Promise<void>((resolve, reject) => {
+      await new Promise<void>((_resolve, reject) => {
         signal.addEventListener('abort', () => reject(new Error('aborted')));
       });
       return { status: 'done' };
