@@ -2,3 +2,22 @@ node_modules
 .build
 dist
 .idea
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# npm publish artifact
+*.tgz
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local overrides
+*.local

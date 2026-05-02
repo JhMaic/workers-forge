@@ -1,5 +1,10 @@
 # workers-forge
 
+[![npm version](https://img.shields.io/npm/v/workers-forge.svg)](https://www.npmjs.com/package/workers-forge)
+[![CI](https://github.com/JhMaic/workers-forge/actions/workflows/ci.yml/badge.svg)](https://github.com/JhMaic/workers-forge/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node ≥ 20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
+
 Convention-driven build, dev, and deploy tooling for Cloudflare Workers monorepos.
 
 Declare your workers and bindings once in TypeScript — the kit generates `wrangler.jsonc` per module, gives you fully-typed `this.env.*` access without any manual configuration, and orchestrates `wrangler dev` / `wrangler deploy` across all workers at once.
@@ -64,15 +69,23 @@ defineWorker(meta, methods)
 
 ## Installation
 
+**Requirements:** Node.js ≥ 20, wrangler ^4, tsx ^4
+
 ```sh
 pnpm add -D workers-forge wrangler tsx
 ```
 
-`wrangler` and `tsx` are peer dependencies and must be installed explicitly. If you use the [Hono adapter](#hono-adapter), also add `hono`:
+`wrangler` and `tsx` are peer dependencies and must be installed explicitly. If you use the [Hono adapter](#hono-adapter), also add `hono` (^4):
 
 ```sh
 pnpm add -D hono
 ```
+
+| Peer dependency | Required | Version |
+|---|---|---|
+| `wrangler` | ✅ | `^4` |
+| `tsx` | ✅ | `^4` |
+| `hono` | optional — only for `workers-forge/hono` | `^4` |
 
 ---
 
@@ -708,11 +721,17 @@ Each `wrangler.jsonc` is a complete, standalone config with:
 ## Development
 
 ```sh
+# Install dependencies
+npm install
+
+# Build (compiles TypeScript → dist/)
+npm run build
+
 # Run the test suite
-pnpm --filter workers-forge test
+npm test
 
 # Type-check without emitting
-pnpm --filter workers-forge typecheck
+npm run typecheck
 ```
 
 Tests live under `__tests__/{runtime,build,cli,deploy,dev}/` mirroring the source tree. The runtime tests include TypeScript type-level assertions (`*.test-d.ts`) validated by vitest's `expectTypeOf`.

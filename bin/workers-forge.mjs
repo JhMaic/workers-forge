@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-// Re-spawn ourselves under tsx so cli.ts can be loaded as TypeScript.
+// Re-spawn ourselves under tsx so user TypeScript files (config + worker modules)
+// can be dynamically imported at runtime.
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const cliTs = fileURLToPath(new URL('../src/cli/index.ts', import.meta.url));
+const cliJs = fileURLToPath(new URL('../dist/cli/index.js', import.meta.url));
 const bootstrap = fileURLToPath(new URL('./_bootstrap.mjs', import.meta.url));
 const child = spawn(
   process.execPath,
-  ['--import', 'tsx/esm', '--import', bootstrap, cliTs, ...process.argv.slice(2)],
+  ['--import', 'tsx/esm', '--import', bootstrap, cliJs, ...process.argv.slice(2)],
   { stdio: 'inherit' },
 );
 child.on('close', code => process.exit(code ?? 1));
