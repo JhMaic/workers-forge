@@ -12,6 +12,7 @@
     "cloudflare",
     "workers",
     "wrangler",
+    "tool",
     "build",
     "deploy",
     "cli",
