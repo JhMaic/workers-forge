@@ -1,0 +1,35 @@
+{
+  "name": "@immi-yoyaku/cf-worker-kit",
+  "type": "module",
+  "version": "1.0.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./build": "./src/build/index.ts",
+    "./hono": "./src/hono.ts"
+  },
+  "main": "./src/index.ts",
+  "bin": {
+    "cf-worker-kit": "./bin/cf-worker-kit.mjs"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "hono": "^4",
+    "tsx": "^4",
+    "wrangler": "^4"
+  },
+  "dependencies": {
+    "globby": "^14.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250410.0",
+    "@types/node": "^25.5.2",
+    "hono": "^4",
+    "tsx": "^4",
+    "vitest": "^4.1.2"
+  }
+}

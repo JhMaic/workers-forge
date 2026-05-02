@@ -1,0 +1,10 @@
+export type { DeployOptions, DeployResult } from '../deploy';
+export { deploy } from '../deploy';
+export type { DevOptions, DevResult } from '../dev';
+export { dev } from '../dev';
+export type { BaseConfig } from './base-config';
+export { defaultBaseConfig } from './base-config';
+export type { BuildOptions, BuildResult, DevConfig, EnvConfig } from './build';
+export { build } from './build';
+export type { KitConfig } from './config';
+export { defineConfig } from './config';
