@@ -2,12 +2,12 @@ import type { KitConfig } from '../build';
 import { dev } from '../dev';
 
 /**
- * Parsed arguments for the `cf-worker-kit dev` command.
+ * Parsed arguments for the `workers-forge dev` command.
  */
 export interface DevCliArgs {
   /**
-   * Path to `cf-worker-kit.config.ts`.
-   * Set via `--config <path>`. Defaults to `cf-worker-kit.config.ts` in the working directory.
+   * Path to `workers-forge.config.ts`.
+   * Set via `--config <path>`. Defaults to `workers-forge.config.ts` in the working directory.
    */
   configPath: string;
   /**
@@ -33,13 +33,13 @@ export interface DevCliArgs {
   only: string[];
   /**
    * Extra arguments forwarded verbatim to every `wrangler dev` process.
-   * Passed after `--` on the command line: `cf-worker-kit dev -- --remote`.
+   * Passed after `--` on the command line: `workers-forge dev -- --remote`.
    */
   passthrough: string[];
 }
 
 export function parseDevArgs(own: string[], passthrough: string[]): DevCliArgs | { error: string } {
-  let configPath = 'cf-worker-kit.config.ts';
+  let configPath = 'workers-forge.config.ts';
   let persistTo: string | undefined;
   let skipBuild = false;
   let envName: string | undefined;

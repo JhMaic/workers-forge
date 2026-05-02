@@ -7,11 +7,11 @@ import type { BuildOptions } from './build';
 export type KitConfig = BuildOptions;
 
 /**
- * Identity helper that gives `cf-worker-kit.config.ts` authors full type
+ * Identity helper that gives `workers-forge.config.ts` authors full type
  * inference + go-to-definition without affecting runtime behavior.
  *
  * @example
- * import { defineConfig } from '@immi-yoyaku/cf-worker-kit';
+ * import { defineConfig } from 'workers-forge';
  * export default defineConfig({
  *   prefix: 'my-app-',
  *   modules: ['src/modules/{search,api}/index.ts'],

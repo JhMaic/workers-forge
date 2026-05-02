@@ -12,7 +12,7 @@ vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 const { spawn } = await import('node:child_process');
 const { runCli } = await import('../../src/cli/index');
 
-const FIXTURE_CONFIG = new URL('../fixtures/cli/cf-worker-kit.config.ts', import.meta.url).pathname;
+const FIXTURE_CONFIG = new URL('../fixtures/cli/workers-forge.config.ts', import.meta.url).pathname;
 
 class FakeChild extends EventEmitter {}
 

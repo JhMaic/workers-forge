@@ -31,7 +31,7 @@ function ensureLoaderRegistered(): void {
 export interface DevConfig {
   /**
    * Forwarded to `wrangler dev --persist-to`. Relative paths resolve against
-   * the directory containing `cf-worker-kit.config.ts` (same rule as `outDir`).
+   * the directory containing `workers-forge.config.ts` (same rule as `outDir`).
    */
   persistTo?: string;
   /**
@@ -48,7 +48,7 @@ export interface EnvConfig {
   name: string;
   /**
    * Path to a dotenv-style file. Resolved relative to the directory containing
-   * `cf-worker-kit.config.ts` (same rule as `outDir`). Absolute paths used as-is.
+   * `workers-forge.config.ts` (same rule as `outDir`). Absolute paths used as-is.
    */
   envFile: string;
   /**
@@ -119,7 +119,7 @@ export async function build(opts: InternalBuildOptions): Promise<BuildResult> {
   if (opts.envName) {
     if (!opts.envs || opts.envs.length === 0) {
       throw new Error(
-        `--env "${opts.envName}" was passed but no \`envs\` are configured in cf-worker-kit.config.`,
+        `--env "${opts.envName}" was passed but no \`envs\` are configured in workers-forge.config.`,
       );
     }
     const entry = opts.envs.find(e => e.name === opts.envName);

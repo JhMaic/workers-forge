@@ -6,7 +6,7 @@ import { parseDeployArgs, runDeploy } from './deploy';
 import { parseDevArgs, runDev } from './dev';
 import { splitDoubleDash } from './parser';
 
-const USAGE = 'Usage: cf-worker-kit <build|deploy|dev> [options] [-- <wrangler args>]';
+const USAGE = 'Usage: workers-forge <build|deploy|dev> [options] [-- <wrangler args>]';
 
 interface ConfigModule { default?: KitConfig }
 

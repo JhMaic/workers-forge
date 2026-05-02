@@ -29,12 +29,12 @@ async function listOutputs(outDirAbs: string): Promise<string[]> {
   catch (err: any) {
     throw new Error(
       `no build outputs found at ${outDirAbs} (${err?.code ?? 'ENOENT'}). `
-      + `Run \`cf-worker-kit deploy --build\` or \`cf-worker-kit build\` first.`,
+      + `Run \`workers-forge deploy --build\` or \`workers-forge build\` first.`,
     );
   }
   const out = entries.filter(e => e.isDirectory()).map(e => join(outDirAbs, e.name, 'wrangler.jsonc')).sort();
   if (out.length === 0)
-    throw new Error(`no build outputs found at ${outDirAbs}. Run \`cf-worker-kit deploy --build\` first.`);
+    throw new Error(`no build outputs found at ${outDirAbs}. Run \`workers-forge deploy --build\` first.`);
   return out;
 }
 

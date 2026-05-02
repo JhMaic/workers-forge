@@ -127,7 +127,7 @@ describe('dev() — multi-process', () => {
       programSpawn(0);
       await expect(dev({ prefix: 'p-', cwd: '/tmp', wranglerArgs: [flag, 'x'] }))
         .rejects
-        .toThrow(/managed by cf-worker-kit/);
+        .toThrow(/managed by workers-forge/);
     },
   );
 

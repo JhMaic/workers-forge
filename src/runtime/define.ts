@@ -1,7 +1,7 @@
 import type { InferEnv, WorkerBindings } from './bindings';
 import { WorkerEntrypoint } from './entrypoint';
 
-const META_BRAND = Symbol.for('@immi-yoyaku/cf-worker-kit/meta');
+const META_BRAND = Symbol.for('workers-forge/meta');
 
 /**
  * Configuration for a queue consumer trigger.

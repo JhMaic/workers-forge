@@ -1,13 +1,13 @@
 /**
  * Build-time injected environment context.
  *
- * These fields are set by the cf-worker-kit build pipeline *before* your worker
+ * These fields are set by the workers-forge build pipeline *before* your worker
  * module files are imported. You can reference them inside `defineWorker` to
  * construct environment-specific resource names at build time.
  *
  * @example
  * ```ts
- * import { defineWorker, envs } from '@immi-yoyaku/cf-worker-kit';
+ * import { defineWorker, envs } from 'workers-forge';
  *
  * export default defineWorker({
  *   name: 'db-service',
@@ -23,6 +23,6 @@
 export const envs: { suffix: string; prefix: string } = {
   /** Suffix appended to resource names to isolate environments (e.g. `"-staging"`). */
   suffix: '',
-  /** Worker name prefix from `cf-worker-kit.config.ts` (e.g. `"my-app-"`). */
+  /** Worker name prefix from `workers-forge.config.ts` (e.g. `"my-app-"`). */
   prefix: '',
 };

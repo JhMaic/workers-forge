@@ -1,4 +1,4 @@
-# @immi-yoyaku/cf-worker-kit
+# workers-forge
 
 Convention-driven build, dev, and deploy tooling for Cloudflare Workers monorepos.
 
@@ -37,16 +37,16 @@ Declare your workers and bindings once in TypeScript — the kit generates `wran
 
 ## Overview
 
-In a Cloudflare Workers monorepo, every worker normally demands its own handwritten `wrangler.jsonc` and a matching TypeScript env type that must be kept in sync with it — forever. Add a KV namespace, update two files. Rename a service binding, hunt down every reference. `cf-worker-kit` collapses that duplication: you declare a worker once in TypeScript and the kit generates the config files and infers all the types for you.
+In a Cloudflare Workers monorepo, every worker normally demands its own handwritten `wrangler.jsonc` and a matching TypeScript env type that must be kept in sync with it — forever. Add a KV namespace, update two files. Rename a service binding, hunt down every reference. `workers-forge` collapses that duplication: you declare a worker once in TypeScript and the kit generates the config files and infers all the types for you.
 
 **What you get:**
 
-- **Zero-duplication config** — `defineWorker(meta, methods)` is the single source of truth. `cf-worker-kit build` generates a ready-to-use `wrangler.jsonc` for each module; you never write or edit those files manually.
+- **Zero-duplication config** — `defineWorker(meta, methods)` is the single source of truth. `workers-forge build` generates a ready-to-use `wrangler.jsonc` for each module; you never write or edit those files manually.
 - **Fully-typed `this.env` for free** — binding declarations are inferred into precise `this.env` types at compile time. Add a D1 binding and `this.env.DB` is immediately a `D1Database` — no separate type file, no cast.
 - **Typed cross-worker RPC** — `service<MyWorkerRPC>('worker-name')` attaches the target worker's method signatures to the binding, giving you full IntelliSense and type checking on every inter-worker call.
 - **Automatic sibling rewrites** — service bindings that point to other workers in the same project are automatically rewritten to their full deployed name (`prefix + name + suffix`). You write short names in source; the kit handles the rest.
-- **One-command local dev** — `cf-worker-kit dev` starts every worker in parallel with its own port; output is labelled `[name:port]`. Use `--app api` to bring up only a worker and its local dependencies.
-- **Dependency-aware deployment** — `cf-worker-kit deploy` builds a DAG from service bindings and deploys in the correct order. A failing worker skips only its transitive dependents; unrelated workers continue.
+- **One-command local dev** — `workers-forge dev` starts every worker in parallel with its own port; output is labelled `[name:port]`. Use `--app api` to bring up only a worker and its local dependencies.
+- **Dependency-aware deployment** — `workers-forge deploy` builds a DAG from service bindings and deploys in the correct order. A failing worker skips only its transitive dependents; unrelated workers continue.
 - **Multi-environment without duplication** — declare `envs` once in the config file. Per-env infrastructure IDs (`CF_CONFIG_*`) and runtime variable overrides are injected at build time; the same source tree deploys to staging and production.
 
 The mental model is straightforward:
@@ -54,7 +54,7 @@ The mental model is straightforward:
 ```
 defineWorker(meta, methods)
        │
-  cf-worker-kit build
+  workers-forge build
        │
   .build/<name>/wrangler.jsonc   ← handed to wrangler
   InferEnv<typeof meta>          ← used by TypeScript
@@ -65,7 +65,7 @@ defineWorker(meta, methods)
 ## Installation
 
 ```sh
-pnpm add -D @immi-yoyaku/cf-worker-kit wrangler tsx
+pnpm add -D workers-forge wrangler tsx
 ```
 
 `wrangler` and `tsx` are peer dependencies and must be installed explicitly. If you use the [Hono adapter](#hono-adapter), also add `hono`:
@@ -81,8 +81,8 @@ pnpm add -D hono
 **1. Create a config file** at the project root:
 
 ```ts
-// cf-worker-kit.config.ts
-import { defineConfig } from '@immi-yoyaku/cf-worker-kit/build';
+// workers-forge.config.ts
+import { defineConfig } from 'workers-forge/build';
 
 export default defineConfig({
   prefix: 'my-app-',
@@ -93,7 +93,7 @@ export default defineConfig({
 **2. Write a worker module** (`src/modules/api/index.ts`):
 
 ```ts
-import { defineWorker } from '@immi-yoyaku/cf-worker-kit';
+import { defineWorker } from 'workers-forge';
 
 const meta = {
   name: 'api',
@@ -116,9 +116,9 @@ export default defineWorker(meta, {
 ```json
 {
   "scripts": {
-    "build":  "cf-worker-kit build",
-    "dev":    "cf-worker-kit dev",
-    "deploy": "cf-worker-kit deploy --build"
+    "build":  "workers-forge build",
+    "dev":    "workers-forge dev",
+    "deploy": "workers-forge deploy --build"
   }
 }
 ```
@@ -138,7 +138,7 @@ pnpm deploy   # build + deploy to Cloudflare
 Workers are declared with `defineWorker(meta, methods)`:
 
 ```ts
-import { defineWorker } from '@immi-yoyaku/cf-worker-kit';
+import { defineWorker } from 'workers-forge';
 
 export default defineWorker(
   {
@@ -236,7 +236,7 @@ const meta = {
 `this.env` is automatically typed based on your `bindings` declaration. You can also export the env type for use elsewhere:
 
 ```ts
-import type { InferEnv } from '@immi-yoyaku/cf-worker-kit';
+import type { InferEnv } from 'workers-forge';
 
 const meta = { name: 'api', bindings: { vars: { TOKEN: '' } } } as const;
 
@@ -252,7 +252,7 @@ For Hono-based workers, use `defineHonoWorker` from the `./hono` subpath:
 ```ts
 // src/modules/web/index.ts
 import { Hono } from 'hono';
-import { defineHonoWorker, type InferHonoEnv } from '@immi-yoyaku/cf-worker-kit/hono';
+import { defineHonoWorker, type InferHonoEnv } from 'workers-forge/hono';
 
 const meta = {
   name: 'web',
@@ -283,7 +283,7 @@ Workers communicate via [Cloudflare service bindings](https://developers.cloudfl
 
 ```ts
 // src/modules/db-service/index.ts
-import { defineWorker, type WorkerRPC } from '@immi-yoyaku/cf-worker-kit';
+import { defineWorker, type WorkerRPC } from 'workers-forge';
 
 const worker = defineWorker(
   { name: 'db-service', bindings: {} },
@@ -304,7 +304,7 @@ export default worker;
 
 ```ts
 // src/modules/api/index.ts
-import { defineWorker, service } from '@immi-yoyaku/cf-worker-kit';
+import { defineWorker, service } from 'workers-forge';
 import type { DbServiceRPC } from '../db-service';
 
 export default defineWorker(
@@ -345,7 +345,7 @@ When an RPC method returns an instance of a class that extends `RpcTarget`, Clou
 
 ```ts
 // src/modules/user-service/index.ts
-import { defineWorker, RpcTarget, type WorkerRPC } from '@immi-yoyaku/cf-worker-kit';
+import { defineWorker, RpcTarget, type WorkerRPC } from 'workers-forge';
 
 class UserQuery extends RpcTarget {
   constructor(private db: D1Database, private userId: string) { super(); }
@@ -390,10 +390,10 @@ const profile = await this.env.USER_SERVICE.user(userId).profile();
 
 ## Config Reference
 
-Create `cf-worker-kit.config.ts` at the project root (or pass `--config <path>` to any CLI command):
+Create `workers-forge.config.ts` at the project root (or pass `--config <path>` to any CLI command):
 
 ```ts
-import { defineConfig } from '@immi-yoyaku/cf-worker-kit/build';
+import { defineConfig } from 'workers-forge/build';
 
 export default defineConfig({
   prefix: 'my-app-',
@@ -473,7 +473,7 @@ TEST=test
 **Worker module:**
 
 ```ts
-import { defineWorker, service } from '@immi-yoyaku/cf-worker-kit';
+import { defineWorker, service } from 'workers-forge';
 
 export default defineWorker(
   {
@@ -506,7 +506,7 @@ export default defineConfig({
 **Build with the env active:**
 
 ```sh
-cf-worker-kit build --env dev   # (or: dev --env dev / deploy --build --env dev)
+workers-forge build --env dev   # (or: dev --env dev / deploy --build --env dev)
 ```
 
 The generated `wrangler.jsonc` will contain `"vars": { "TEST": "test" }`.
@@ -534,7 +534,7 @@ CF_CONFIG_KV_ID=staging-kv-uuid-here
 **Worker module:**
 
 ```ts
-import { defineWorker } from '@immi-yoyaku/cf-worker-kit';
+import { defineWorker } from 'workers-forge';
 
 export default defineWorker(
   {
@@ -563,14 +563,14 @@ export default defineConfig({
 **Deploy to staging:**
 
 ```sh
-cf-worker-kit deploy --build --env staging
+workers-forge deploy --build --env staging
 # Workers deployed as: my-app-api-staging, my-app-web-staging, …
 ```
 
 **Deploy to production:**
 
 ```sh
-cf-worker-kit deploy --build --env production
+workers-forge deploy --build --env production
 # Workers deployed as: my-app-api, my-app-web, …
 ```
 
@@ -579,7 +579,7 @@ cf-worker-kit deploy --build --env production
 The `envs` singleton is set by the build pipeline before your modules are imported. Use it to construct environment-specific resource names at build time:
 
 ```ts
-import { defineWorker, envs } from '@immi-yoyaku/cf-worker-kit';
+import { defineWorker, envs } from 'workers-forge';
 
 export default defineWorker(
   {
@@ -599,7 +599,7 @@ export default defineWorker(
 | Field | Value |
 |---|---|
 | `envs.suffix` | The active env's `suffix` (e.g. `"-staging"`). Empty string when no `--env` is active. |
-| `envs.prefix` | The global `prefix` from `cf-worker-kit.config.ts` (e.g. `"my-app-"`). |
+| `envs.prefix` | The global `prefix` from `workers-forge.config.ts` (e.g. `"my-app-"`). |
 
 Both fields default to `''` so code compiles without null-checks during a plain `build` with no `--env`.
 
@@ -608,7 +608,7 @@ Both fields default to `''` so code compiles without null-checks during a plain 
 ## CLI Reference
 
 ```sh
-cf-worker-kit <build|dev|deploy> [options] [-- <wrangler args>]
+workers-forge <build|dev|deploy> [options] [-- <wrangler args>]
 ```
 
 Arguments after `--` are forwarded verbatim to every underlying `wrangler` invocation.
@@ -618,24 +618,24 @@ Arguments after `--` are forwarded verbatim to every underlying `wrangler` invoc
 Discovers module files, imports each one, and writes a `wrangler.jsonc` to `outDir/<name>/`.
 
 ```sh
-cf-worker-kit build [--config <path>]
+workers-forge build [--config <path>]
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `--config <path>` | `cf-worker-kit.config.ts` | Path to the config file. |
+| `--config <path>` | `workers-forge.config.ts` | Path to the config file. |
 
 ### dev
 
 Builds (unless `--no-build`) then starts all workers with `wrangler dev` in parallel. Each worker gets its own port. Output lines are prefixed with `[name:port]`.
 
 ```sh
-cf-worker-kit dev [options] [-- <wrangler args>]
+workers-forge dev [options] [-- <wrangler args>]
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `--config <path>` | `cf-worker-kit.config.ts` | Path to the config file. |
+| `--config <path>` | `workers-forge.config.ts` | Path to the config file. |
 | `--no-build` | off | Skip the build step; use existing output in `outDir`. Incompatible with `--env`. |
 | `--app <name>` | *(all)* | Run only this module and all other local workers it transitively depends on via service bindings. Repeatable: `--app api --app web`. |
 | `--env <name>` | *(none)* | Activate a named env (requires a fresh build; incompatible with `--no-build`). |
@@ -647,12 +647,12 @@ cf-worker-kit dev [options] [-- <wrangler args>]
 Deploys all workers in the build output using a dependency-aware parallel scheduler. A failed worker skips only its transitive dependents; unrelated workers continue.
 
 ```sh
-cf-worker-kit deploy [options] [-- <wrangler args>]
+workers-forge deploy [options] [-- <wrangler args>]
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `--config <path>` | `cf-worker-kit.config.ts` | Path to the config file. |
+| `--config <path>` | `workers-forge.config.ts` | Path to the config file. |
 | `--build` | off | Run `build` before deploying. Mutually exclusive with `--path`. |
 | `--path <dir>` | `outDir` (`.build`) | Deploy from a pre-built directory. Mutually exclusive with `--build`. |
 | `--env <name>` | *(none)* | Activate a named env during build. **Requires `--build`** (env values are baked at build time). |
@@ -673,7 +673,7 @@ export CLOUDFLARE_ACCOUNT_ID="your_account_id_here"
 
 ## Build Output
 
-After `cf-worker-kit build`, the output directory (default `.build`) contains one subdirectory per module:
+After `workers-forge build`, the output directory (default `.build`) contains one subdirectory per module:
 
 ```
 .build/
@@ -697,9 +697,9 @@ Each `wrangler.jsonc` is a complete, standalone config with:
 
 | Subpath | Import from | What it provides |
 |---|---|---|
-| `@immi-yoyaku/cf-worker-kit` | Worker source files | `defineWorker`, `service`, `envs`, `WorkerRPC`, `InferEnv`, `WorkerBindings`, … |
-| `@immi-yoyaku/cf-worker-kit/hono` | Worker source files (Hono) | `defineHonoWorker`, `InferHonoEnv` |
-| `@immi-yoyaku/cf-worker-kit/build` | `cf-worker-kit.config.ts`, Node scripts | `defineConfig`, `build`, `dev`, `deploy`, `KitConfig`, `BaseConfig`, … |
+| `workers-forge` | Worker source files | `defineWorker`, `service`, `envs`, `WorkerRPC`, `InferEnv`, `WorkerBindings`, … |
+| `workers-forge/hono` | Worker source files (Hono) | `defineHonoWorker`, `InferHonoEnv` |
+| `workers-forge/build` | `workers-forge.config.ts`, Node scripts | `defineConfig`, `build`, `dev`, `deploy`, `KitConfig`, `BaseConfig`, … |
 
 > **Important:** Worker source files must only import from `.` and `./hono`. The `./build` subpath imports Node built-ins (`node:fs`, `node:module`, `globby`) that are not available in the Cloudflare Workers runtime and would break your bundle.
 
@@ -709,10 +709,10 @@ Each `wrangler.jsonc` is a complete, standalone config with:
 
 ```sh
 # Run the test suite
-pnpm --filter @immi-yoyaku/cf-worker-kit test
+pnpm --filter workers-forge test
 
 # Type-check without emitting
-pnpm --filter @immi-yoyaku/cf-worker-kit typecheck
+pnpm --filter workers-forge typecheck
 ```
 
 Tests live under `__tests__/{runtime,build,cli,deploy,dev}/` mirroring the source tree. The runtime tests include TypeScript type-level assertions (`*.test-d.ts`) validated by vitest's `expectTypeOf`.

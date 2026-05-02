@@ -63,8 +63,8 @@ function assertNoReservedPassthrough(args: readonly string[]): void {
     const flag = a.includes('=') ? a.slice(0, a.indexOf('=')) : a;
     if (RESERVED_FLAGS.has(flag)) {
       throw new Error(
-        `${flag} is managed by cf-worker-kit per child worker; `
-        + `set it via cf-worker-kit.config (dev.ports / dev.persistTo) instead of passthrough args.`,
+        `${flag} is managed by workers-forge per child worker; `
+        + `set it via workers-forge.config (dev.ports / dev.persistTo) instead of passthrough args.`,
       );
     }
   }
@@ -189,7 +189,7 @@ export async function dev(opts: DevOptions, io?: DevIo): Promise<DevResult> {
     if (outputs.length === 0) {
       throw new Error(
         `No build outputs found under ${resolve(cwd, outDir)}. `
-        + `Run \`cf-worker-kit build\` first or omit --no-build.`,
+        + `Run \`workers-forge build\` first or omit --no-build.`,
       );
     }
   }

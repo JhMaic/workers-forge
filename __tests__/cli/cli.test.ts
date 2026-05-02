@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { runCli } from '../../src/cli/index';
 
-const FIXTURE_CONFIG = new URL('../fixtures/cli/cf-worker-kit.config.ts', import.meta.url).pathname;
+const FIXTURE_CONFIG = new URL('../fixtures/cli/workers-forge.config.ts', import.meta.url).pathname;
 
 describe('runCli()', () => {
   it('returns 1 with usage on missing command', async () => {
@@ -17,7 +17,7 @@ describe('runCli()', () => {
   });
 
   it('returns 1 when config file is missing', async () => {
-    expect(await runCli(['build', '--config', '/nonexistent/cf-worker-kit.config.ts'])).toBe(1);
+    expect(await runCli(['build', '--config', '/nonexistent/workers-forge.config.ts'])).toBe(1);
   });
 
   it('runs build successfully with a fixture config', async () => {

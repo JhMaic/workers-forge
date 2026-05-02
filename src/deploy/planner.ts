@@ -38,7 +38,7 @@ export async function loadGraph(outputs: readonly string[], prefix: string): Pro
       const depShort = fullToShort.get(svc.service);
       if (!depShort || depShort === p.name) {
         if (svc.service.startsWith(prefix) && !fullToShort.has(svc.service))
-          console.warn(`[cf-worker-kit] deploy: service "${svc.service}" has prefix "${prefix}" but was not found in build outputs — ignored for ordering (typo?)`);
+          console.warn(`[workers-forge] deploy: service "${svc.service}" has prefix "${prefix}" but was not found in build outputs — ignored for ordering (typo?)`);
         continue;
       }
       if (!deps.includes(depShort))

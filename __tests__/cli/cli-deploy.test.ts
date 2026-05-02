@@ -8,7 +8,7 @@ vi.mock('../../src/build/build', async (orig) => {
 });
 
 const { runCli } = await import('../../src/cli/index');
-const FIXTURE = new URL('../fixtures/cli/cf-worker-kit.config.ts', import.meta.url).pathname;
+const FIXTURE = new URL('../fixtures/cli/workers-forge.config.ts', import.meta.url).pathname;
 
 beforeEach(() => {
   mocks.deploy.mockReset();
@@ -57,7 +57,7 @@ describe('cli deploy', () => {
   });
 
   it('falls back to cfg.outDir when --path is omitted', async () => {
-    const fixtureWithOutDir = new URL('../fixtures/cli/cf-worker-kit.outdir.config.ts', import.meta.url).pathname;
+    const fixtureWithOutDir = new URL('../fixtures/cli/workers-forge.outdir.config.ts', import.meta.url).pathname;
     expect(await runCli(['deploy', '--config', fixtureWithOutDir])).toBe(0);
     expect(mocks.deploy).toHaveBeenCalledWith(expect.objectContaining({ outDir: 'custom-dist' }));
   });

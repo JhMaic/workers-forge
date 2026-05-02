@@ -4,12 +4,12 @@ import { build } from '../build/build';
 import { deploy } from '../deploy';
 
 /**
- * Parsed arguments for the `cf-worker-kit deploy` command.
+ * Parsed arguments for the `workers-forge deploy` command.
  */
 export interface DeployCliArgs {
   /**
-   * Path to `cf-worker-kit.config.ts`.
-   * Set via `--config <path>`. Defaults to `cf-worker-kit.config.ts` in the working directory.
+   * Path to `workers-forge.config.ts`.
+   * Set via `--config <path>`. Defaults to `workers-forge.config.ts` in the working directory.
    */
   configPath: string;
   /**
@@ -39,13 +39,13 @@ export interface DeployCliArgs {
   verbose: boolean;
   /**
    * Extra arguments forwarded verbatim to every `wrangler deploy` process.
-   * Passed after `--` on the command line: `cf-worker-kit deploy -- --dry-run`.
+   * Passed after `--` on the command line: `workers-forge deploy -- --dry-run`.
    */
   wranglerArgs: string[];
 }
 
 export function parseDeployArgs(own: string[], passthrough: string[]): DeployCliArgs | { error: string } {
-  let configPath = 'cf-worker-kit.config.ts';
+  let configPath = 'workers-forge.config.ts';
   let doBuild = false;
   let path: string | undefined;
   let envName: string | undefined;

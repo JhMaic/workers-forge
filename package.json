@@ -1,5 +1,5 @@
 {
-  "name": "@immi-yoyaku/cf-worker-kit",
+  "name": "workers-forge",
   "type": "module",
   "version": "1.0.0",
   "private": true,
@@ -10,7 +10,7 @@
   },
   "main": "./src/index.ts",
   "bin": {
-    "cf-worker-kit": "./bin/cf-worker-kit.mjs"
+    "workers-forge": "./bin/workers-forge.mjs"
   },
   "scripts": {
     "test": "vitest run",

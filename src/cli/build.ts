@@ -2,18 +2,18 @@ import type { KitConfig } from '../build';
 import { build } from '../build/build';
 
 /**
- * Parsed arguments for the `cf-worker-kit build` command.
+ * Parsed arguments for the `workers-forge build` command.
  */
 export interface BuildCliArgs {
   /**
-   * Path to `cf-worker-kit.config.ts`.
-   * Set via `--config <path>`. Defaults to `cf-worker-kit.config.ts` in the working directory.
+   * Path to `workers-forge.config.ts`.
+   * Set via `--config <path>`. Defaults to `workers-forge.config.ts` in the working directory.
    */
   configPath: string;
 }
 
 export function parseBuildArgs(own: string[]): BuildCliArgs | { error: string } {
-  let configPath = 'cf-worker-kit.config.ts';
+  let configPath = 'workers-forge.config.ts';
   for (let i = 0; i < own.length; i++) {
     const t = own[i]!;
     if (t === '--config') {
