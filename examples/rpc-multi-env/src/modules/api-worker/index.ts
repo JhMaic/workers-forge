@@ -1,5 +1,5 @@
-import { defineWorker, service } from 'workers-forge';
-import type { DataWorkerRPC } from '../data-worker';
+import {defineWorker, service} from 'workers-forge';
+import type {DataWorkerRPC} from '../data-worker';
 
 export default defineWorker(
   {
@@ -17,11 +17,9 @@ export default defineWorker(
         return Response.json({ env: this.env.APP_ENV, todos });
       }
 
-      if (pathname === '/todos' && request.method === 'POST') {
-        const body = await request.json<{ text?: string }>();
-        if (!body.text) return new Response('Bad Request', { status: 400 });
-        const todo = await this.env.DATA.addTodo(body.text);
-        return Response.json(todo, { status: 201 });
+      if (pathname === '/todos/add' && request.method === 'GET') {
+        const todo = await this.env.DATA.addTodo('workers-forge');
+        return Response.json({ text: 'ok' });
       }
 
       return new Response('Not Found', { status: 404 });

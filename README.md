@@ -745,8 +745,7 @@ Ready-to-run examples are in the [`examples/`](./examples) directory.
 
 | Example | Description |
 |---------|-------------|
-| [`rpc-multi-env`](./examples/rpc-multi-env) | D1 → data-worker --RPC--> api-worker with `local`/`stage` env isolation |
-| [`hono-basic`](./examples/hono-basic) | Minimal Hono adapter with typed env and in-memory todos |
+| [`rpc-multi-env`](./examples/rpc-multi-env) | KV → data-worker --RPC--> api-worker with `local`/`stage` env isolation |
 
 Each example is a self-contained project with its own `package.json` and `README.md`.
 
