@@ -1,10 +1,10 @@
-import type { BuildOptions, BuildResult, InternalBuildOptions } from '../build/build';
-import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
-import { isAbsolute, resolve } from 'node:path';
-import { globby } from 'globby';
-import { build } from '../build/build';
-import { parseServiceDeps, resolveClosure } from '../build/internal/deps';
+import type {BuildOptions, BuildResult, InternalBuildOptions} from '../build/build';
+import {build} from '../build/build';
+import {spawn} from 'node:child_process';
+import {readFile} from 'node:fs/promises';
+import {isAbsolute, resolve} from 'node:path';
+import {globby} from 'globby';
+import {parseServiceDeps, resolveClosure} from '../build/internal/deps';
 import {
   allocatePorts,
   findFreePort,
@@ -194,7 +194,10 @@ export async function dev(opts: DevOptions, io?: DevIo): Promise<DevResult> {
     }
   }
   else {
-    const buildOpts: InternalBuildOptions = { ...opts, envName: opts.envName };
+    // Build must always generate configs
+    // for ALL workers so that dep-closure resolution in the spawn step can read
+    // every service-binding dependency, even those not in the requested set.
+    const buildOpts: InternalBuildOptions = { ...opts, envName: opts.envName, only: undefined };
     const buildResult: BuildResult = await build(buildOpts);
     outputs = buildResult.outputs;
   }

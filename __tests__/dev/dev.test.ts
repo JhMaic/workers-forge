@@ -362,6 +362,28 @@ describe('dev() — only (selective startup)', () => {
     ).rejects.toThrow(/unknown worker "nope"/);
   });
 
+  it('does not forward only to build() — regression for bc9a0eb7', async () => {
+    // Regression: before the fix, dev() spread `opts` into buildOpts which
+    // inadvertently forwarded `only` to build(). build() would then skip
+    // generating configs for non-requested workers, and the dep-closure
+    // resolver would throw "unknown worker referenced as dep".
+    const { outputs, cwd } = await setupTmp({
+      'crawler': { name: 'p-crawler' },
+      'immi-card-resv': {
+        name: 'p-immi-card-resv',
+        services: [{ binding: 'CRAWLER', service: 'p-crawler' }],
+      },
+    });
+    mocks.build.mockResolvedValue({ deployed: [], outputs });
+    programSpawn(0);
+
+    await dev({ prefix: 'p-', cwd, only: ['immi-card-resv'], _spawnDelayMs: 0 });
+
+    const buildCallArg = mocks.build.mock.calls[0]![0] as { only?: unknown };
+    // build must be called without only so it generates ALL worker configs
+    expect(buildCallArg.only == null || (Array.isArray(buildCallArg.only) && buildCallArg.only.length === 0)).toBe(true);
+  });
+
   it('empty only list spawns all (back-compat)', async () => {
     const { outputs, cwd } = await setupTmp({
       a: { name: 'p-a' },
