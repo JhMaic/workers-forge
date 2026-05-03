@@ -69,23 +69,30 @@ defineWorker(meta, methods)
 
 ## Installation
 
-**Requirements:** Node.js ≥ 20, wrangler ^4, tsx ^4
+**Prerequisites**: Node.js ≥ 20
 
-```sh
-pnpm add -D workers-forge wrangler tsx
+```bash
+npm install --save-dev workers-forge
 ```
 
-`wrangler` and `tsx` are peer dependencies and must be installed explicitly. If you use the [Hono adapter](#hono-adapter), also add `hono` (^4):
+> `wrangler` and `tsx` are required peer dependencies. npm v7+ installs them automatically. If you use **pnpm**, install peers explicitly:
+> ```
+> pnpm add -D workers-forge wrangler tsx
+> ```
 
-```sh
-pnpm add -D hono
+When using the [Hono adapter](#hono-adapter), also install:
+
+```bash
+npm install --save-dev hono
 ```
 
-| Peer dependency | Required | Version |
-|---|---|---|
-| `wrangler` | ✅ | `^4` |
-| `tsx` | ✅ | `^4` |
-| `hono` | optional — only for `workers-forge/hono` | `^4` |
+> **pnpm:** `pnpm add -D hono`
+
+| Dependency | Required | Version |
+|------------|----------|---------|
+| `wrangler` | ✅       | `^4`    |
+| `tsx`      | ✅       | `^4`    |
+| `hono`     | Optional | `^4`    |
 
 ---
 
@@ -139,10 +146,12 @@ export default defineWorker(meta, {
 **4. Run**:
 
 ```sh
-pnpm build    # generates .build/<name>/wrangler.jsonc for each module
-pnpm dev      # starts all workers with wrangler dev
-pnpm deploy   # build + deploy to Cloudflare
+npm run build    # generates .build/<name>/wrangler.jsonc for each module
+npm run dev      # starts all workers with wrangler dev
+npm run deploy   # build + deploy to Cloudflare
 ```
+
+> **pnpm:** `pnpm build` / `pnpm dev` / `pnpm deploy`
 
 ---
 
