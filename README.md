@@ -5,6 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node ≥ 20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
 
+English | [中文](./README.zh-CN.md)
+
 Convention-driven build, dev, and deploy tooling for Cloudflare Workers monorepos.
 
 Declare your workers and bindings once in TypeScript — the kit generates `wrangler.jsonc` per module, gives you fully-typed `this.env.*` access without any manual configuration, and orchestrates `wrangler dev` / `wrangler deploy` across all workers at once.
