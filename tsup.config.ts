@@ -9,7 +9,7 @@ export default defineConfig({
     'cli/index': 'src/cli/index.ts',
   },
   format: 'esm',
-  dts: true,
+  dts: false,
   clean: true,
   outDir: 'dist',
   // node_modules are automatically external; list explicit external packages
@@ -18,10 +18,10 @@ export default defineConfig({
     // loader.mjs is a plain-JS Node module loader hook referenced by path at
     // runtime. Copy it alongside the compiled build output so that the bundled
     // dist/build/index.js can register it via `register('./internal/loader.mjs')`.
-    mkdirSync('dist/build/internal', { recursive: true });
+    mkdirSync('dist/internal', { recursive: true });
     copyFileSync(
       'src/build/internal/loader.mjs',
-      'dist/build/internal/loader.mjs',
+      'dist/internal/loader.mjs',
     );
   },
 });
