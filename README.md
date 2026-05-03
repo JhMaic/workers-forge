@@ -140,11 +140,20 @@ export default defineWorker(meta, {
     "build":  "workers-forge build",
     "dev":    "workers-forge dev",
     "deploy": "workers-forge deploy --build"
-  }
+  },
 }
 ```
 
-**4. Run**:
+**4. Add a `tsconfig.json`** at the project root:
+
+```json
+{
+  "extends": "workers-forge/tsconfig",
+  "include": ["src/**/*", "workers-forge.config.ts"]
+}
+```
+
+**5. Run**:
 
 ```sh
 npm run build    # generates .build/<name>/wrangler.jsonc for each module
