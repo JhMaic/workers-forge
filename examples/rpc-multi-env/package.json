@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "workers-forge dev --env local",
     "dev:stage": "workers-forge dev --env stage",
-    "deploy:stage": "workers-forge deploy --build --env stage"
+    "deploy:stage": "workers-forge deploy --build --env stage",
+    "build": "workers-forge build --env local",
+    "build:api": "workers-forge build --env local --app api-worker"
   },
   "devDependencies": {
     "workers-forge": "latest",

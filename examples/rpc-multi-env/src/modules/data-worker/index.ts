@@ -7,15 +7,13 @@ const worker = defineWorker(
       vars: { APP_ENV: '' },
       d1_databases: [{
         binding: 'DB',
-        database_id: process.env.CF_CONFIG_D1_ID ?? '',
+        database_id: process.env.CF_CONFIG_D1_ID!,
         database_name: 'todos' + envs.suffix,
       }],
     },
   },
   {
-    async fetch() {
-      return new Response(`data-worker running in: ${this.env.APP_ENV}`);
-    },
+
     async getTodos(): Promise<{ id: number; text: string }[]> {
       const { results } = await this.env.DB.prepare('SELECT id, text FROM todos').all();
       return results as { id: number; text: string }[];

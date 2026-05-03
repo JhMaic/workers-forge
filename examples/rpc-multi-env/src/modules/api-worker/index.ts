@@ -12,7 +12,6 @@ export default defineWorker(
   {
     async fetch(request: Request) {
       const { pathname } = new URL(request.url);
-
       if (pathname === '/todos' && request.method === 'GET') {
         const todos = await this.env.DATA.getTodos();
         return Response.json({ env: this.env.APP_ENV, todos });
