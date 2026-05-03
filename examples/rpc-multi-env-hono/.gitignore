@@ -1,0 +1,8 @@
+.build/
+.wrangler/
+node_modules/
+dist/
+
+# Re-include env files overridden by root .gitignore (.env.* and *.local rules)
+!.env.local
+!.env.stage
