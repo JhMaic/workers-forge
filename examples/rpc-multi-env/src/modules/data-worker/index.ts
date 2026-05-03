@@ -1,14 +1,14 @@
-import { defineWorker, type WorkerRPC } from 'workers-forge';
+import {defineWorker, envs, type WorkerRPC} from 'workers-forge';
 
 const worker = defineWorker(
   {
     name: 'data-worker',
     bindings: {
-      vars: { APP_ENV: 'development' },
+      vars: { APP_ENV: '' },
       d1_databases: [{
         binding: 'DB',
         database_id: process.env.CF_CONFIG_D1_ID ?? '',
-        database_name: 'todos' + (process.env.CF_CONFIG_D1_SUFFIX ?? ''),
+        database_name: 'todos' + envs.suffix,
       }],
     },
   },

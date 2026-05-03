@@ -5,7 +5,7 @@ export default defineWorker(
   {
     name: 'api-worker',
     bindings: {
-      vars: { APP_ENV: 'development' },
+      vars: { APP_ENV: '' },
       services: { DATA: service<DataWorkerRPC>('data-worker') },
     },
   },

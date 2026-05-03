@@ -9,7 +9,7 @@
     "deploy": "workers-forge deploy --build"
   },
   "devDependencies": {
-    "workers-forge": "file:../..",
+    "workers-forge": "latest",
     "hono": "^4",
     "wrangler": "^4",
     "tsx": "^4"

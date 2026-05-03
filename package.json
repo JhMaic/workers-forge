@@ -38,7 +38,8 @@
     "./hono": {
       "types": "./dist/hono.d.ts",
       "import": "./dist/hono.js"
-    }
+    },
+    "./tsconfig": "./tsconfig/worker.json"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -48,6 +49,7 @@
   "files": [
     "dist",
     "bin",
+    "tsconfig",
     "README.md",
     "LICENSE"
   ],
@@ -59,8 +61,11 @@
     "prepublishOnly": "npm run build && npm test"
   },
   "peerDependencies": {
+    "@cloudflare/workers-types": "^4",
+    "@types/node": ">=20",
     "hono": "^4",
     "tsx": "^4",
+    "typescript": "^6",
     "wrangler": "^4"
   },
   "peerDependenciesMeta": {

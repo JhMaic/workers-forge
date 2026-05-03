@@ -9,7 +9,7 @@
     "deploy:stage": "workers-forge deploy --build --env stage"
   },
   "devDependencies": {
-    "workers-forge": "file:../..",
+    "workers-forge": "latest",
     "wrangler": "^4",
     "tsx": "^4"
   }
