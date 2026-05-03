@@ -529,7 +529,7 @@ export default defineConfig({
 **Build with the env active:**
 
 ```sh
-workers-forge build --env dev   # (or: dev --env dev / deploy --build --env dev)
+workers-forge build --env dev   # also: dev --env dev / deploy --build --env dev
 ```
 
 The generated `wrangler.jsonc` will contain `"vars": { "TEST": "test" }`.
@@ -641,12 +641,14 @@ Arguments after `--` are forwarded verbatim to every underlying `wrangler` invoc
 Discovers module files, imports each one, and writes a `wrangler.jsonc` to `outDir/<name>/`.
 
 ```sh
-workers-forge build [--config <path>]
+workers-forge build [options]
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--config <path>` | `workers-forge.config.ts` | Path to the config file. |
+| `--env <name>` | *(none)* | Activate a named env (must match an `envs[].name` entry). Vars from the env file are overlaid on declared `vars`; worker names get the env suffix. |
+| `--app <name>` | *(all)* | Build only this module. Repeatable: `--app api --app web`. Other workers' existing outputs in `outDir` are preserved. |
 
 ### dev
 

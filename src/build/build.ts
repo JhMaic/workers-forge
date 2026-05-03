@@ -90,6 +90,12 @@ export interface BuildOptions {
 // Not exposed via `defineConfig`.
 export interface InternalBuildOptions extends BuildOptions {
   envName?: string;
+  /**
+   * If provided and non-empty, only the listed module short names (without
+   * prefix) are built. Other workers' existing outputs are left untouched.
+   * Empty or omitted = build all discovered modules (default behavior).
+   */
+  only?: readonly string[];
 }
 
 export interface BuildResult {
@@ -213,16 +219,36 @@ export async function build(opts: InternalBuildOptions): Promise<BuildResult> {
     throw new Error(`Validation failed:\n${errors.map(e => `  - ${e}`).join('\n')}`);
   }
 
-  await rm(outDir, { recursive: true, force: true });
+  // siblings must be computed from ALL valid workers so service-binding rewrites
+  // refer to the full deployed set, even when --app limits what gets generated.
+  const siblings = new Set(valid.map(v => getWorkerMeta(v.worker).name));
+
+  let toGenerate = valid;
+  if (opts.only && opts.only.length > 0) {
+    for (const name of opts.only) {
+      if (!siblings.has(name)) {
+        const available = [...siblings].join(', ') || '(none)';
+        throw new Error(`Unknown module "${name}" passed to --app. Available: ${available}.`);
+      }
+    }
+    const requested = new Set(opts.only);
+    toGenerate = valid.filter(v => requested.has(getWorkerMeta(v.worker).name));
+  }
+
+  // Selective build: preserve other workers' output; only refresh the requested
+  // subdirectories. Full build: wipe outDir to remove stale configs.
+  if (toGenerate.length === valid.length) {
+    await rm(outDir, { recursive: true, force: true });
+  }
   await mkdir(outDir, { recursive: true });
 
   const outputs: string[] = [];
   const deployed: string[] = [];
-  const siblings = new Set(valid.map(v => getWorkerMeta(v.worker).name));
 
-  for (const { file, worker } of valid) {
+  for (const { file, worker } of toGenerate) {
     const meta = getWorkerMeta(worker);
     const moduleOutDir = join(outDir, meta.name);
+    await rm(moduleOutDir, { recursive: true, force: true });
     await mkdir(moduleOutDir, { recursive: true });
     const outFile = join(moduleOutDir, 'wrangler.jsonc');
     const sourceRel = relative(moduleOutDir, file).replaceAll('\\', '/');

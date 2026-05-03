@@ -51,7 +51,7 @@ export async function runCli(argv: string[]): Promise<number> {
       return 1;
     }
     try {
-      return await runBuild({ ...cfg, cwd: cfg.cwd ?? dirname(configPath) });
+      return await runBuild(parsed, { ...cfg, cwd: cfg.cwd ?? dirname(configPath) });
     }
     catch (e: any) {
       console.error(e?.message ?? String(e));
