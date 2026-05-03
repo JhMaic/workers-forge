@@ -36,6 +36,7 @@ Declare your workers and bindings once in TypeScript — the kit generates `wran
   - [deploy](#deploy)
 - [Build Output](#build-output)
 - [Subpath Exports](#subpath-exports)
+- [Examples](#examples)
 - [Development](#development)
 
 ---
@@ -724,6 +725,19 @@ Each `wrangler.jsonc` is a complete, standalone config with:
 | `workers-forge/build` | `workers-forge.config.ts`, Node scripts | `defineConfig`, `build`, `dev`, `deploy`, `KitConfig`, `BaseConfig`, … |
 
 > **Important:** Worker source files must only import from `.` and `./hono`. The `./build` subpath imports Node built-ins (`node:fs`, `node:module`, `globby`) that are not available in the Cloudflare Workers runtime and would break your bundle.
+
+---
+
+## Examples
+
+Ready-to-run examples are in the [`examples/`](./examples) directory.
+
+| Example | Description |
+|---------|-------------|
+| [`rpc-multi-env`](./examples/rpc-multi-env) | D1 → data-worker --RPC--> api-worker with `local`/`stage` env isolation |
+| [`hono-basic`](./examples/hono-basic) | Minimal Hono adapter with typed env and in-memory todos |
+
+Each example is a self-contained project with its own `package.json` and `README.md`.
 
 ---
 

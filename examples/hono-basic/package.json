@@ -1,0 +1,17 @@
+{
+  "name": "hono-basic-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "workers-forge dev",
+    "build": "workers-forge build",
+    "deploy": "workers-forge deploy --build"
+  },
+  "devDependencies": {
+    "workers-forge": "file:../..",
+    "hono": "^4",
+    "wrangler": "^4",
+    "tsx": "^4"
+  }
+}
