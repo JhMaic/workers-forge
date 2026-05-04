@@ -7,9 +7,12 @@ export interface InferHonoEnv<T extends WorkerMeta> {
   Bindings: InferEnv<{ bindings: T['bindings'] }>;
 }
 
-export function defineHonoWorker<const TBindings extends WorkerBindings>(
+export function defineHonoWorker<
+  const TBindings extends WorkerBindings,
+  THonoEnv extends { Bindings: InferEnv<{ bindings: TBindings }> },
+>(
   meta: WorkerMeta<TBindings>,
-  app: Hono<{ Bindings: InferEnv<{ bindings: TBindings }> }>,
+  app: Hono<THonoEnv>,
 ) {
   return defineWorker(meta, {
     fetch(request: Request) {

@@ -45,6 +45,17 @@ describe('defineHonoWorker', () => {
     expect(getWorkerMeta(Worker).name).toBe('notify');
   });
 
+  it('accepts a Hono app that also carries Variables in its type param', () => {
+    interface MyVars { userId: string }
+    const meta = { name: 'typed', bindings: { vars: { TOKEN: 'x' } } } as const;
+    type Env = InferHonoEnv<typeof meta>;
+    // Combining Variables with Bindings must compile without error.
+    const app = new Hono<Env & { Variables: MyVars }>();
+    app.get('/', c => c.text(c.get('userId')));
+    expectTypeOf(defineHonoWorker<typeof meta['bindings'], Env & { Variables: MyVars }>)
+      .toBeCallableWith(meta, app);
+  });
+
   it('routes requests to Hono handlers using worker env', async () => {
     const meta = { name: 'notify', bindings: { vars: { GREETING: 'hello' } } } as const;
     type Env = InferHonoEnv<typeof meta>;
