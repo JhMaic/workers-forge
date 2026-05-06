@@ -22,6 +22,7 @@ Declare your workers and bindings once in TypeScript — the kit generates `wran
   - [Bindings reference](#bindings-reference)
   - [Worker triggers](#worker-triggers)
   - [Typed environment (`InferEnv`)](#typed-environment-inferenv)
+  - [Raw wrangler config override (`_raw`)](#raw-wrangler-config-override-_raw)
 - [Hono Adapter](#hono-adapter)
 - [Service Bindings & RPC](#service-bindings--rpc)
   - [Promise pipelining](#promise-pipelining)
@@ -277,6 +278,38 @@ const meta = { name: 'api', bindings: { vars: { TOKEN: '' } } } as const;
 type Env = InferEnv<typeof meta>; // { TOKEN: string }
 ```
 
+### Raw wrangler config override (`_raw`)
+
+`_raw` lets you inject arbitrary wrangler config fields at the **highest priority** for a specific worker. Its contents are written verbatim into the generated `wrangler.jsonc` — no prefix, suffix, or sibling service-name rewriting is applied.
+
+**Override priority (lowest → highest):**
+
+1. `baseConfig` in `workers-forge.config` — global defaults for all workers
+2. `defineWorker` `bindings` + `triggers` — per-worker, subject to name rewrites
+3. `_raw` — per-worker, no name rewrites, overwrites anything above it
+
+The `_raw` type is `Omit<Unstable_RawEnvironment, 'name' | 'main'>` — the same as `BaseConfig`. The `name` and `main` fields are always managed by the kit and cannot be overridden.
+
+```ts
+export default defineWorker(
+  {
+    name: 'api',
+    bindings: {
+      vars: { TIMEOUT: '5000' },
+    },
+    _raw: {
+      // Raise the CPU limit for this worker only
+      limits: { cpu_ms: 500 },
+      // Override vars entirely (bypasses the bindings.vars merge logic)
+      vars: { TIMEOUT: '30000', EXTRA_FLAG: 'true' },
+    },
+  },
+  { fetch: () => new Response('ok') },
+);
+```
+
+> **No name rewriting:** Service names, binding IDs, and other fields inside `_raw` pass through exactly as written. If you reference a sibling worker in `_raw.services`, you must use its full deployed name (with prefix and suffix) yourself.
+
 ---
 
 ## Hono Adapter
@@ -462,7 +495,7 @@ export default defineConfig({
 
 ### Shared wrangler config (`baseConfig`)
 
-`baseConfig` accepts any field from `wrangler.jsonc` (typed as `Omit<Unstable_RawEnvironment, 'name' | 'main'>`). It is merged into every generated config. Module-specific bindings and triggers always win on conflict.
+`baseConfig` accepts any field from `wrangler.jsonc` (typed as `Omit<Unstable_RawEnvironment, 'name' | 'main'>`). It is merged into every generated config as the lowest-priority layer. Module-specific `bindings`/`triggers` win over `baseConfig` on conflict, and per-worker `_raw` fields win over everything.
 
 The built-in defaults are:
 

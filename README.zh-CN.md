@@ -22,6 +22,7 @@
   - [绑定参考](#绑定参考)
   - [Worker 触发器](#worker-触发器)
   - [类型化环境（`InferEnv`）](#类型化环境inferenv)
+  - [原始 wrangler 配置覆盖（`_raw`）](#原始-wrangler-配置覆盖_raw)
 - [Hono 适配器](#hono-适配器)
 - [Service Bindings 与 RPC](#service-bindings-与-rpc)
   - [Promise 管道调用](#promise-管道调用)
@@ -277,6 +278,38 @@ const meta = { name: 'api', bindings: { vars: { TOKEN: '' } } } as const;
 type Env = InferEnv<typeof meta>; // { TOKEN: string }
 ```
 
+### 原始 wrangler 配置覆盖（`_raw`）
+
+`_raw` 允许你以**最高优先级**为特定 Worker 注入任意 wrangler 配置字段。其内容会逐字写入生成的 `wrangler.jsonc` —— 不会进行任何前缀、后缀或同级服务名称替换。
+
+**覆盖优先级（从低到高）：**
+
+1. `workers-forge.config` 中的 `baseConfig` —— 所有 Worker 的全局默认值
+2. `defineWorker` 的 `bindings` + `triggers` —— 单个 Worker，参与名称替换
+3. `_raw` —— 单个 Worker，**不参与**名称替换，会覆盖以上所有层
+
+`_raw` 的类型为 `Omit<Unstable_RawEnvironment, 'name' | 'main'>`，与 `BaseConfig` 相同。`name` 和 `main` 字段始终由工具管理，无法被覆盖。
+
+```ts
+export default defineWorker(
+  {
+    name: 'api',
+    bindings: {
+      vars: { TIMEOUT: '5000' },
+    },
+    _raw: {
+      // 仅为此 Worker 提高 CPU 限制
+      limits: { cpu_ms: 500 },
+      // 完整覆盖 vars（绕过 bindings.vars 合并逻辑）
+      vars: { TIMEOUT: '30000', EXTRA_FLAG: 'true' },
+    },
+  },
+  { fetch: () => new Response('ok') },
+);
+```
+
+> **不进行名称替换：** `_raw` 中的服务名称、绑定 ID 及其他字段均按原样写入。如果你在 `_raw.services` 中引用了同级 Worker，需要自行写入完整的部署名称（含前缀和后缀）。
+
 ---
 
 ## Hono 适配器
@@ -462,7 +495,7 @@ export default defineConfig({
 
 ### 共享 wrangler 配置（`baseConfig`）
 
-`baseConfig` 接受 `wrangler.jsonc` 中的任何字段（类型为 `Omit<Unstable_RawEnvironment, 'name' | 'main'>`）。它会被合并到每个生成的配置中。模块特定的绑定和触发器在冲突时优先。
+`baseConfig` 接受 `wrangler.jsonc` 中的任何字段（类型为 `Omit<Unstable_RawEnvironment, 'name' | 'main'>`）。它会被合并到每个生成的配置中，作为优先级最低的层。模块特定的 `bindings`/`triggers` 在冲突时优先于 `baseConfig`，而单个 Worker 的 `_raw` 字段优先于一切。
 
 内置默认值为：
 
