@@ -115,4 +115,69 @@ describe('mergeWranglerConfig', () => {
     expect(config.name).toBe('pfx-a');
     expect(config.main).toBe('src.ts');
   });
+
+  it('_raw overrides baseConfig fields', () => {
+    const config = mergeWranglerConfig({
+      moduleName: 'a',
+      prefix: 'pfx-',
+      sourcePath: 'src.ts',
+      meta: {
+        name: 'a',
+        _raw: { no_bundle: true, limits: { cpu_ms: 500 } },
+      },
+      base: { ...defaultBaseConfig, no_bundle: false },
+    });
+    expect(config.no_bundle).toBe(true);
+    expect((config.limits as any).cpu_ms).toBe(500);
+  });
+
+  it('_raw overrides meta binding fields', () => {
+    const config = mergeWranglerConfig({
+      moduleName: 'a',
+      prefix: 'pfx-',
+      sourcePath: 'src.ts',
+      meta: {
+        name: 'a',
+        bindings: { vars: { FOO: 'original' } },
+        _raw: { vars: { FOO: 'overridden', EXTRA: 'injected' } },
+      },
+      base: defaultBaseConfig,
+    });
+    expect(config.vars).toEqual({ FOO: 'overridden', EXTRA: 'injected' });
+  });
+
+  it('_raw services are NOT name-rewritten', () => {
+    const config = mergeWranglerConfig({
+      moduleName: 'a',
+      prefix: 'pfx-',
+      sourcePath: 'src.ts',
+      meta: {
+        name: 'a',
+        _raw: {
+          services: [{ binding: 'RAW_SVC', service: 'sibling-worker' }],
+        },
+      },
+      base: defaultBaseConfig,
+      siblings: new Set(['a', 'sibling-worker']),
+      suffix: '-prod',
+    });
+    // _raw content passes through verbatim — no prefix/suffix added
+    expect(config.services).toEqual([{ binding: 'RAW_SVC', service: 'sibling-worker' }]);
+  });
+
+  it('_raw has highest priority: base < meta bindings < _raw', () => {
+    const config = mergeWranglerConfig({
+      moduleName: 'a',
+      prefix: 'pfx-',
+      sourcePath: 'src.ts',
+      meta: {
+        name: 'a',
+        bindings: { vars: { K: 'from-meta' } },
+        _raw: { vars: { K: 'from-raw' }, no_bundle: true },
+      },
+      base: { ...defaultBaseConfig, no_bundle: false },
+    });
+    expect((config.vars as any).K).toBe('from-raw');
+    expect(config.no_bundle).toBe(true);
+  });
 });

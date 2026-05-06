@@ -87,5 +87,8 @@ export function mergeWranglerConfig(args: MergeArgs): Record<string, unknown> {
   if (triggerFields.tail_consumers)
     out.tail_consumers = triggerFields.tail_consumers;
 
+  if (meta._raw)
+    Object.assign(out, structuredClone(meta._raw as Record<string, unknown>));
+
   return out;
 }

@@ -1,3 +1,4 @@
+import type { Unstable_RawEnvironment } from 'wrangler';
 import type { InferEnv, WorkerBindings } from './bindings';
 import { WorkerEntrypoint } from './entrypoint';
 
@@ -156,6 +157,28 @@ export interface WorkerMeta<TBindings extends WorkerBindings = WorkerBindings> {
   name: string;
   bindings?: TBindings;
   triggers?: WorkerTriggers;
+  /**
+   * Raw wrangler config fields applied at the **highest priority**, after
+   * `baseConfig` and all `bindings`/`triggers` have been merged.
+   *
+   * Contents are written verbatim to `wrangler.jsonc` — no prefix/suffix
+   * injection and no sibling service-name rewriting. Accepts any field
+   * accepted by `baseConfig` (the full wrangler config type minus `name`
+   * and `main`, which are always controlled by the kit).
+   *
+   * Override priority (lowest → highest):
+   *   1. `baseConfig` in `workers-forge.config`
+   *   2. `defineWorker` `bindings` + `triggers` (with name rewrites)
+   *   3. `_raw` (this field — no name rewrites)
+   *
+   * @example
+   * // Raise the CPU limit and disable bundling for this worker only
+   * _raw: {
+   *   limits: { cpu_ms: 500 },
+   *   no_bundle: true,
+   * }
+   */
+  _raw?: Omit<Unstable_RawEnvironment, 'name' | 'main'>;
 }
 
 // Methods that exist on WorkerEntrypoint base — excluded from custom RPC surface.
