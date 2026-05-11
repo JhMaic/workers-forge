@@ -1,0 +1,27 @@
+{
+  "name": "@example/workers",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "default": "./index.ts"
+    }
+  },
+  "scripts": {
+    "build:local":       "workers-forge build --env local       --config ../../workers-forge.config.ts",
+    "dev:local":         "workers-forge dev   --env local       --config ../../workers-forge.config.ts",
+    "dev:staging":       "workers-forge dev   --env staging     --config ../../workers-forge.config.ts",
+    "deploy:staging":    "workers-forge deploy --build --env staging    --config ../../workers-forge.config.ts",
+    "deploy:production": "workers-forge deploy --build --env production --config ../../workers-forge.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "workers-forge": "link:../../../..",
+    "@cloudflare/workers-types": "^4",
+    "wrangler": "^4"
+  }
+}

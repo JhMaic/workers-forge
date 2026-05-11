@@ -1,0 +1,29 @@
+{
+  "name": "@example/web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "gen:local":      "workers-forge gen src/app.meta.ts --out wrangler.jsonc --env local      --config ../../workers-forge.config.ts",
+    "gen:staging":    "workers-forge gen src/app.meta.ts --out wrangler.jsonc --env staging    --config ../../workers-forge.config.ts",
+    "gen:production": "workers-forge gen src/app.meta.ts --out wrangler.jsonc --env production --config ../../workers-forge.config.ts",
+    "dev:local":      "pnpm gen:local && next dev",
+    "dev:staging":    "pnpm gen:staging && next dev",
+    "deploy:staging":    "pnpm gen:staging    && opennextjs-cloudflare deploy",
+    "deploy:production": "pnpm gen:production && opennextjs-cloudflare deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4",
+    "@example/workers": "workspace:*",
+    "workers-forge": "link:../../../..",
+    "wrangler": "^4"
+  },
+  "//": "next + @opennextjs/cloudflare are deliberately not declared here so the example stays lightweight to install. Add them when wiring this up to a real Next.js app:",
+  "_realDependencies": {
+    "next": "^15",
+    "react": "^19",
+    "react-dom": "^19",
+    "@opennextjs/cloudflare": "^1"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "compatibility_date": "2026-04-08",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
+  },
+  "name": "mre-web",
+  "main": ".open-next/worker.js",
+  "vars": {
+    "APP_NAME": "monorepo-opennext-example",
+    "LOG_LEVEL": "warn"
+  },
+  "services": [
+    {
+      "binding": "KV_STORE",
+      "service": "mre-kv-store"
+    }
+  ],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".open-next/assets"
+  }
+}

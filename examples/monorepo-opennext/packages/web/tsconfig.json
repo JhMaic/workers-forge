@@ -1,0 +1,4 @@
+{
+  "extends": "workers-forge/tsconfig",
+  "include": ["src/**/*"]
+}
