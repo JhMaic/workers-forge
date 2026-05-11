@@ -37,6 +37,7 @@
   - [build](#build)
   - [dev](#dev)
   - [deploy](#deploy)
+  - [gen](#gen)
 - [构建输出](#构建输出)
 - [子路径导出](#子路径导出)
 - [示例](#示例)
@@ -738,6 +739,25 @@ export CLOUDFLARE_ACCOUNT_ID="your_account_id_here"
 
 **部署输出**展示带有状态图标的 ASCII 依赖树（`✔` 已部署、`✖` 失败、`⏭` 已跳过），末尾附有汇总信息。失败的 Worker 会打印其完整的 `wrangler` 输出，确保错误始终可见。
 
+### gen
+
+从一份用户编写的 meta 文件生成单个 `wrangler.jsonc`。适用于：你的项目（基于 `@opennextjs/cloudflare` 的 Next.js、Remix、独立 Worker 等）需要一份分环境、带类型推导的 `wrangler.jsonc`，但本身不符合 `build` 的多模块模型 —— 典型场景是 monorepo 里跟 Workers 包并列的另一个包，复用同一份 `envs` 和 `prefix`。
+
+```sh
+workers-forge gen <metaFile> [options]
+```
+
+| 选项 | 默认值 | 说明 |
+|---|---|---|
+| `<metaFile>` | *(必填)* | 命名导出 `meta` 的 TS/JS 文件（一个 `WorkerMeta`，通常用 `defineWorkerMeta` 编写）。 |
+| `--out <path>` | `./wrangler.jsonc` | 生成文件的输出路径。 |
+| `--env <name>` | *(无)* | 激活配置中 `envs[]` 的某个环境（覆写 vars、追加 suffix、在导入 meta 之前把 `CF_CONFIG_*` 注入 `process.env`）。 |
+| `--config <path>` | `workers-forge.config.ts` | 配置文件路径。`gen` 只读取 `envs[]`、`baseConfig`、`prefix`、`modules` 四项，`dev` / `outDir` 等会被忽略。 |
+
+当共享配置里有 `modules` glob 时，`gen` 还会从那些模块里发现 sibling worker 名字，自动把 `services[].service` 改写成完整部署名（`${prefix}${name}${suffix}`）—— 与 `build` 行为一致。所以在 monorepo 里你可以直接写 `service<MyRpc>('my-worker')`，每个环境自动解析正确。
+
+完整接线参考 [`examples/monorepo-opennext`](./examples/monorepo-opennext)：一个 pnpm monorepo 把 Workers 包和 Next.js（OpenNext）包接到同一份共享配置上。
+
 ---
 
 ## 构建输出
@@ -766,9 +786,9 @@ export CLOUDFLARE_ACCOUNT_ID="your_account_id_here"
 
 | 子路径 | 导入来源 | 提供内容 |
 |---|---|---|
-| `workers-forge` | Worker 源文件 | `defineWorker`、`service`、`envs`、`WorkerRPC`、`InferEnv`、`WorkerBindings`… |
+| `workers-forge` | Worker 源文件 / app meta 文件 | `defineWorker`、`defineWorkerMeta`、`service`、`envs`、`WorkerRPC`、`InferEnv`、`WorkerBindings`… |
 | `workers-forge/hono` | Worker 源文件（Hono） | `defineHonoWorker`、`InferHonoEnv` |
-| `workers-forge/build` | `workers-forge.config.ts`、Node 脚本 | `defineConfig`、`build`、`dev`、`deploy`、`KitConfig`、`BaseConfig`… |
+| `workers-forge/build` | `workers-forge.config.ts`、Node 脚本 | `defineConfig`、`build`、`dev`、`deploy`、`gen`、`KitConfig`、`BaseConfig`… |
 
 > **重要：** Worker 源文件只能从 `.` 和 `./hono` 导入。`./build` 子路径导入了 Node 内置模块（`node:fs`、`node:module`、`globby`），这些模块在 Cloudflare Workers 运行时中不可用，会导致 bundle 出错。
 
@@ -781,6 +801,8 @@ export CLOUDFLARE_ACCOUNT_ID="your_account_id_here"
 | 示例 | 描述 |
 |---------|-------------|
 | [`rpc-multi-env`](./examples/rpc-multi-env) | KV → data-worker --RPC--> api-worker，支持 `local`/`stage` 环境隔离 |
+| [`rpc-multi-env-hono`](./examples/rpc-multi-env-hono) | 同上，但 `api-worker` 使用 Hono 适配器（`defineHonoWorker`）；Worker 以扁平文件方式定义在 `src/` 下 |
+| [`monorepo-opennext`](./examples/monorepo-opennext) | pnpm monorepo：一个 Workers 包加一个 Next.js 16（`@opennextjs/cloudflare`）包共享同一份配置。Next.js 侧把 `workers-forge gen` 纯当作 `wrangler.jsonc` 生成器使用，并通过类型化 RPC 调用 sibling Worker。 |
 
 每个示例都是独立的项目，包含自己的 `package.json` 和 `README.md`。
 
