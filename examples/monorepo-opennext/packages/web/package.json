@@ -9,10 +9,11 @@
     "gen:production": "workers-forge gen src/app.meta.ts --out wrangler.jsonc --env production --config ../../workers-forge.config.ts",
     "dev:local":      "pnpm gen:local && next dev",
     "dev:staging":    "pnpm gen:staging && next dev",
-    "build":          "pnpm gen:production && opennextjs-cloudflare build",
-    "preview:local":  "pnpm gen:local && opennextjs-cloudflare preview",
-    "deploy:staging":    "pnpm gen:staging    && opennextjs-cloudflare deploy",
-    "deploy:production": "pnpm gen:production && opennextjs-cloudflare deploy",
+    "build":          "next build",
+    "preview:local":     "pnpm gen:local      && opennextjs-cloudflare preview",
+    "preview:staging":   "pnpm gen:staging    && opennextjs-cloudflare preview",
+    "deploy:staging":    "pnpm gen:staging    && opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "deploy:production": "pnpm gen:production && opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

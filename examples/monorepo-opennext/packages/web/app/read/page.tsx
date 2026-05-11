@@ -1,7 +1,6 @@
 import Link from 'next/link';
-import { getCloudflareContext } from '@opennextjs/cloudflare';
+import {getCloudflareContext} from '@opennextjs/cloudflare';
 
-export const runtime = 'edge';
 
 interface SearchParams { key?: string }
 

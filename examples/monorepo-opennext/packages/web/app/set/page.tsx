@@ -1,8 +1,7 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
-import { getCloudflareContext } from '@opennextjs/cloudflare';
+import {redirect} from 'next/navigation';
+import {getCloudflareContext} from '@opennextjs/cloudflare';
 
-export const runtime = 'edge';
 
 // React Server Action — runs on the worker, calls the kv-store worker via RPC.
 async function saveKv(formData: FormData): Promise<void> {
