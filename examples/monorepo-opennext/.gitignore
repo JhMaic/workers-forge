@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Workers-forge multi-worker build output (used by packages/workers)
+.build/
+
+# Workers-forge gen output (regenerated per env on every build / dev / deploy)
+packages/web/wrangler.jsonc
+
+# Next.js / OpenNext build artifacts
+.next/
+.open-next/
+
+# Local wrangler dev state (KV/D1/R2 Miniflare storage, dev registry)
+.wrangler/
+
+# TypeScript incremental cache
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# --- Re-include demo env files ---
+# The repo root .gitignore excludes `.env.*`. These files in this example
+# contain ONLY placeholder values (no real secrets) and are part of the
+# runnable demo, so we un-ignore them here.
+!.env
+!.env.local
+!.env.staging
+!.env.production

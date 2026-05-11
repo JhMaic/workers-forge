@@ -12,8 +12,8 @@
   },
   "devDependencies": {
     "concurrently": "^9",
-    "workers-forge": "link:../..",
-    "wrangler": "^4",
+    "workers-forge": "^1.0.6-beta.0",
+    "wrangler": "^4.90.0",
     "tsx": "^4",
     "typescript": "^6"
   }

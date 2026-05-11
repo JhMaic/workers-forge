@@ -1,11 +1,12 @@
 // THE ONE FILE A REAL USER WRITES.
 //
-// Module-mode .d.ts (has top-level import), so `declare module` here is an
-// augmentation of the existing `@opennextjs/cloudflare` module. This is the
-// canonical way to make `getCloudflareContext().env` fully typed from the
-// `defineWorkerMeta` source-of-truth.
+// @opennextjs/cloudflare declares `CloudflareEnv` in the *global* namespace
+// (see node_modules/@opennextjs/cloudflare/dist/api/cloudflare-context.d.ts).
+// So the augmentation is `declare global { interface CloudflareEnv … }`, not
+// `declare module "@opennextjs/cloudflare"`.
 import type { AppEnv } from './app.meta';
 
-declare module '@opennextjs/cloudflare' {
+declare global {
+  // Merges with @opennextjs/cloudflare's own CloudflareEnv interface.
   interface CloudflareEnv extends AppEnv {}
 }

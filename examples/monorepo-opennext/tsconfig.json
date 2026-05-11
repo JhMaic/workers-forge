@@ -1,0 +1,7 @@
+{
+  "extends": "workers-forge/tsconfig",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["workers-forge.config.ts"]
+}
