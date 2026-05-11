@@ -20,6 +20,6 @@ export type {
   WorkerRPC,
   WorkerTriggers,
 } from './runtime/define';
-export { defineWorker, getWorkerMeta, isDefinedWorker } from './runtime/define';
+export { defineWorker, defineWorkerMeta, getWorkerMeta, isDefinedWorker } from './runtime/define';
 export { RpcTarget } from './runtime/entrypoint';
 export { envs } from './runtime/envs';

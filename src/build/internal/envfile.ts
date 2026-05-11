@@ -92,3 +92,20 @@ export async function readEnvFile(absPath: string): Promise<ParsedEnvFile> {
   const text = await readFile(absPath, 'utf8');
   return parseEnvFileText(text);
 }
+
+/**
+ * Reads one or more envFiles and layers them in order — **later files override
+ * earlier ones** on key conflicts. Mirrors Vite/Next.js/dotenv-flow semantics.
+ *
+ * @param absPaths - Absolute paths, evaluated in array order.
+ */
+export async function readLayeredEnvFiles(
+  absPaths: readonly string[],
+): Promise<ParsedEnvFile> {
+  const merged: Record<string, string> = {};
+  for (const p of absPaths) {
+    const { values } = await readEnvFile(p);
+    Object.assign(merged, values);
+  }
+  return { values: merged };
+}

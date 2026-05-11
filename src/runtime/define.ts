@@ -234,6 +234,30 @@ export function defineWorker<
   return GeneratedWorker as unknown as DefinedWorker<TBindings, TMethods>;
 }
 
+/**
+ * Identity helper that types a `WorkerMeta` object literal while preserving
+ * its narrow `const` shape. Use it when authoring a meta in a file that does
+ * not call `defineWorker` (for example, a single-app meta consumed by the
+ * `gen` CLI subcommand). It returns the input unchanged at runtime and gives
+ * you IDE autocomplete plus immediate errors on misspelled binding fields.
+ *
+ * @example
+ * ```ts
+ * export const meta = defineWorkerMeta({
+ *   name: 'web',
+ *   bindings: {
+ *     vars: { GREETING: '' },
+ *     services: { AUTH: service<AuthRpc>('auth') },
+ *   },
+ * });
+ *
+ * export type AppEnv = InferEnv<typeof meta>;
+ * ```
+ */
+export function defineWorkerMeta<const T extends WorkerMeta>(meta: T): T {
+  return meta;
+}
+
 export function isDefinedWorker(value: unknown): value is DefinedWorker {
   return typeof value === 'function'
     && (value as any)[META_BRAND] === true;

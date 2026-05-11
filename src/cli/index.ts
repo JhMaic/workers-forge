@@ -4,9 +4,10 @@ import { pathToFileURL } from 'node:url';
 import { parseBuildArgs, runBuild } from './build';
 import { parseDeployArgs, runDeploy } from './deploy';
 import { parseDevArgs, runDev } from './dev';
+import { parseGenArgs, runGen } from './gen';
 import { splitDoubleDash } from './parser';
 
-const USAGE = 'Usage: workers-forge <build|deploy|dev> [options] [-- <wrangler args>]';
+const USAGE = 'Usage: workers-forge <build|deploy|dev|gen> [options] [-- <wrangler args>]';
 
 interface ConfigModule { default?: KitConfig }
 
@@ -29,11 +30,44 @@ export async function runCli(argv: string[]): Promise<number> {
     return 1;
   }
   const cmd = argv[0];
-  if (cmd !== 'build' && cmd !== 'deploy' && cmd !== 'dev') {
+  if (cmd !== 'build' && cmd !== 'deploy' && cmd !== 'dev' && cmd !== 'gen') {
     console.error(`Unknown command "${cmd}". ${USAGE}`);
     return 1;
   }
   const { own, passthrough } = splitDoubleDash(argv.slice(1));
+
+  if (cmd === 'gen') {
+    const parsed = parseGenArgs(own);
+    if ('error' in parsed) {
+      console.error(parsed.error);
+      return 1;
+    }
+    // `gen` tolerates a missing config: when --env is not used we don't need
+    // envs[]; baseConfig is optional too (gen will fall back to defaults).
+    const configPath = resolve(parsed.configPath);
+    let cfg: KitConfig | undefined;
+    try {
+      cfg = await loadConfig(configPath);
+      cfg = { ...cfg, cwd: cfg.cwd ?? dirname(configPath) };
+    }
+    catch (e: any) {
+      if (parsed.envName !== undefined) {
+        console.error(
+          `--env "${parsed.envName}" requires a config file with \`envs\`. `
+          + `Could not load ${configPath}: ${e?.message ?? e}`,
+        );
+        return 1;
+      }
+      console.info(`No config at ${configPath}; using defaults.`);
+    }
+    try {
+      return await runGen(parsed, cfg);
+    }
+    catch (e: any) {
+      console.error(e?.message ?? String(e));
+      return 1;
+    }
+  }
 
   if (cmd === 'build') {
     const parsed = parseBuildArgs(own);

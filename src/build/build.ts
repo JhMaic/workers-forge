@@ -9,7 +9,7 @@ import { getWorkerMeta } from '../runtime/define';
 import { envs } from '../runtime/envs';
 import { defaultBaseConfig } from './base-config';
 import { discoverModuleFiles } from './internal/discover';
-import { readEnvFile } from './internal/envfile';
+import { readLayeredEnvFiles } from './internal/envfile';
 
 import { mergeWranglerConfig } from './internal/merge';
 import { validateEnvs, validateModule, validateRegistry } from './internal/validate';
@@ -47,10 +47,13 @@ export interface EnvConfig {
   /** Selector used by `--env <name>`. Must be unique across `envs`. */
   name: string;
   /**
-   * Path to a dotenv-style file. Resolved relative to the directory containing
-   * `workers-forge.config.ts` (same rule as `outDir`). Absolute paths used as-is.
+   * Path(s) to dotenv-style file(s). When an array, files are layered in order
+   * with **later entries overriding earlier ones** (so put more-specific files
+   * after more-generic ones, e.g. `['.env', '.env.staging', '.env.staging.local']`).
+   * Relative paths resolve against the directory containing `workers-forge.config.ts`
+   * (same rule as `outDir`). Absolute paths are used as-is.
    */
-  envFile: string;
+  envFile: string | readonly string[];
   /**
    * Appended verbatim to every generated worker name:
    *   `${prefix}${meta.name}${suffix}`
@@ -133,18 +136,19 @@ export async function build(opts: InternalBuildOptions): Promise<BuildResult> {
       const available = opts.envs.map(e => e.name).join(', ');
       throw new Error(`Unknown env "${opts.envName}". Available envs: ${available}.`);
     }
-    const envFileAbs = resolve(cwd, entry.envFile);
+    const envFiles = Array.isArray(entry.envFile) ? entry.envFile : [entry.envFile as string];
+    const envFilesAbs = envFiles.map(p => resolve(cwd, p));
     let parsed;
     try {
-      parsed = await readEnvFile(envFileAbs);
+      parsed = await readLayeredEnvFiles(envFilesAbs);
     }
     catch (err: any) {
-      throw new Error(`Failed to read envFile for env "${entry.name}" at ${envFileAbs}: ${err?.message ?? err}`);
+      throw new Error(`Failed to read envFile for env "${entry.name}" (${envFilesAbs.join(', ')}): ${err?.message ?? err}`);
     }
     const resolvedSuffix = entry.suffix;
     activeEnv = { suffix: resolvedSuffix, vars: parsed.values };
     console.info(`🌱 Active env: ${entry.name}`, {
-      envFile: relative(cwd, envFileAbs),
+      envFile: envFilesAbs.map(p => relative(cwd, p)),
       suffix: resolvedSuffix,
       keys: Object.keys(parsed.values).length,
     });

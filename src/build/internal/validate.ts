@@ -120,8 +120,24 @@ export function validateEnvs(envs: readonly EnvConfig[] | undefined): string[] {
       seen.add(name);
     }
 
-    if (typeof envFile !== 'string' || envFile.length === 0)
-      errors.push(`envs[${idx}].envFile: must be a non-empty string`);
+    if (typeof envFile === 'string') {
+      if (envFile.length === 0)
+        errors.push(`envs[${idx}].envFile: must be a non-empty string`);
+    }
+    else if (Array.isArray(envFile)) {
+      if (envFile.length === 0) {
+        errors.push(`envs[${idx}].envFile: array must contain at least one path`);
+      }
+      else {
+        envFile.forEach((p, j) => {
+          if (typeof p !== 'string' || p.length === 0)
+            errors.push(`envs[${idx}].envFile[${j}]: must be a non-empty string`);
+        });
+      }
+    }
+    else {
+      errors.push(`envs[${idx}].envFile: must be a string or array of strings`);
+    }
 
     if (typeof suffix !== 'string')
       errors.push(`envs[${idx}].suffix: must be a string (use "" for no suffix)`);

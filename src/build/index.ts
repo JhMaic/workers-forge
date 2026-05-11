@@ -8,3 +8,5 @@ export type { BuildOptions, BuildResult, DevConfig, EnvConfig } from './build';
 export { build } from './build';
 export type { KitConfig } from './config';
 export { defineConfig } from './config';
+export type { GenOptions, GenResult } from './gen';
+export { gen } from './gen';
