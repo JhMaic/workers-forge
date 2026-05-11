@@ -37,6 +37,7 @@ Declare your workers and bindings once in TypeScript — the kit generates `wran
   - [build](#build)
   - [dev](#dev)
   - [deploy](#deploy)
+  - [gen](#gen)
 - [Build Output](#build-output)
 - [Subpath Exports](#subpath-exports)
 - [Examples](#examples)
@@ -738,6 +739,25 @@ export CLOUDFLARE_ACCOUNT_ID="your_account_id_here"
 
 **Deploy output** shows an ASCII dependency tree with status icons (`✔` deployed, `✖` failed, `⏭` skipped), followed by a summary. Failed workers print their full `wrangler` output so errors are always visible.
 
+### gen
+
+Generates a single `wrangler.jsonc` from one user-authored meta file. Use this when you have a project (Next.js via `@opennextjs/cloudflare`, Remix, a standalone Worker, etc.) that needs a typed, env-aware `wrangler.jsonc` but doesn't fit the multi-module `build` model — typically a sibling package in a monorepo that consumes the same `envs` and `prefix` as the Workers package.
+
+```sh
+workers-forge gen <metaFile> [options]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `<metaFile>` | *(required)* | TS/JS file that named-exports `meta` (a `WorkerMeta`, typically authored with `defineWorkerMeta`). |
+| `--out <path>` | `./wrangler.jsonc` | Output path for the generated config. |
+| `--env <name>` | *(none)* | Activate a named env from `envs[]` in the config (overlays vars, applies suffix, injects `CF_CONFIG_*` into `process.env` before importing the meta). |
+| `--config <path>` | `workers-forge.config.ts` | Path to the config file. Only `envs[]`, `baseConfig`, `prefix`, and `modules` are consulted; `dev` / `outDir` etc. are ignored by `gen`. |
+
+When the shared config carries a `modules` glob, `gen` also discovers sibling worker names from those modules and rewrites `services[].service` entries to the full deployed name (`${prefix}${name}${suffix}`) — same behavior as `build`. So in a monorepo you can write `service<MyRpc>('my-worker')` and have it resolve correctly per env.
+
+See [`examples/monorepo-opennext`](./examples/monorepo-opennext) for a full pnpm monorepo wiring up a Workers package + a Next.js (OpenNext) package against the same shared config.
+
 ---
 
 ## Build Output
@@ -766,9 +786,9 @@ Each `wrangler.jsonc` is a complete, standalone config with:
 
 | Subpath | Import from | What it provides |
 |---|---|---|
-| `workers-forge` | Worker source files | `defineWorker`, `service`, `envs`, `WorkerRPC`, `InferEnv`, `WorkerBindings`, … |
+| `workers-forge` | Worker source files / app meta files | `defineWorker`, `defineWorkerMeta`, `service`, `envs`, `WorkerRPC`, `InferEnv`, `WorkerBindings`, … |
 | `workers-forge/hono` | Worker source files (Hono) | `defineHonoWorker`, `InferHonoEnv` |
-| `workers-forge/build` | `workers-forge.config.ts`, Node scripts | `defineConfig`, `build`, `dev`, `deploy`, `KitConfig`, `BaseConfig`, … |
+| `workers-forge/build` | `workers-forge.config.ts`, Node scripts | `defineConfig`, `build`, `dev`, `deploy`, `gen`, `KitConfig`, `BaseConfig`, … |
 
 > **Important:** Worker source files must only import from `.` and `./hono`. The `./build` subpath imports Node built-ins (`node:fs`, `node:module`, `globby`) that are not available in the Cloudflare Workers runtime and would break your bundle.
 
@@ -782,6 +802,7 @@ Ready-to-run examples are in the [`examples/`](./examples) directory.
 |---------|-------------|
 | [`rpc-multi-env`](./examples/rpc-multi-env) | KV → data-worker --RPC--> api-worker with `local`/`stage` env isolation |
 | [`rpc-multi-env-hono`](./examples/rpc-multi-env-hono) | Same as above but `api-worker` uses the Hono adapter (`defineHonoWorker`); workers defined as flat files in `src/` |
+| [`monorepo-opennext`](./examples/monorepo-opennext) | pnpm monorepo: a Workers package + a Next.js 16 (`@opennextjs/cloudflare`) package sharing one config. The Next.js side uses `workers-forge gen` purely as a `wrangler.jsonc` generator and calls into a sibling Worker via typed RPC. |
 
 Each example is a self-contained project with its own `package.json` and `README.md`.
 
