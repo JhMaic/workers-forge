@@ -87,6 +87,9 @@ export async function runGen(args: GenCliArgs, cfg: KitConfig | undefined): Prom
     baseConfig: cfg?.baseConfig,
     envs: cfg?.envs,
     envName: args.envName,
+    // Forward `modules` so gen can discover sibling worker names and
+    // auto-rewrite `services[].service` — matches `build` behavior.
+    modules: cfg?.modules,
   });
   return 0;
 }

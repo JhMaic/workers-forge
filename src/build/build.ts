@@ -1,32 +1,18 @@
 import type { DefinedWorker } from '../runtime/define';
 import type { BaseConfig } from './base-config';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { register } from 'node:module';
-import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join, relative, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { WORKER_NAME_MAX_LEN, WORKER_NAME_REGEX } from '../runtime/constants';
 import { getWorkerMeta } from '../runtime/define';
 import { envs } from '../runtime/envs';
 import { defaultBaseConfig } from './base-config';
 import { discoverModuleFiles } from './internal/discover';
 import { readLayeredEnvFiles } from './internal/envfile';
+import { ensureLoaderRegistered } from './internal/loader-register';
 
 import { mergeWranglerConfig } from './internal/merge';
 import { validateEnvs, validateModule, validateRegistry } from './internal/validate';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-let loaderRegistered = false;
-function ensureLoaderRegistered(): void {
-  if (loaderRegistered)
-    return;
-  try {
-    register('./internal/loader.mjs', pathToFileURL(`${__dirname}/`));
-    loaderRegistered = true;
-  }
-  catch (err) {
-    console.warn('Failed to register cloudflare:* stub loader', { error: String(err) });
-  }
-}
 
 export interface DevConfig {
   /**

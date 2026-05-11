@@ -5,9 +5,12 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { WORKER_NAME_MAX_LEN, WORKER_NAME_REGEX } from '../runtime/constants';
+import { getWorkerMeta, isDefinedWorker } from '../runtime/define';
 import { envs } from '../runtime/envs';
 import { defaultBaseConfig } from './base-config';
+import { discoverModuleFiles } from './internal/discover';
 import { readLayeredEnvFiles } from './internal/envfile';
+import { ensureLoaderRegistered } from './internal/loader-register';
 import { mergeWranglerConfig } from './internal/merge';
 import { validateEnvs } from './internal/validate';
 
@@ -33,6 +36,15 @@ export interface GenOptions {
   envs?: readonly EnvConfig[];
   /** Active env name. Must match an entry in `envs`. */
   envName?: string;
+  /**
+   * Optional glob(s) of sibling worker modules in the same monorepo. When
+   * provided, `gen` discovers each module's name and rewrites
+   * `services[].service` entries that match a sibling name to the full
+   * deployed name (`${prefix}${name}${suffix}`) — same behavior as
+   * `workers-forge build`. Without this, you'd have to write
+   * `${envs.prefix}name${envs.suffix}` manually inside the meta.
+   */
+  modules?: readonly string[];
 }
 
 export interface GenResult {
@@ -91,6 +103,36 @@ export async function gen(opts: GenOptions): Promise<GenResult> {
   envs.suffix = activeEnv?.suffix ?? '';
   envs.prefix = prefix;
 
+  // Discover sibling worker names from the monorepo's modules glob (if any).
+  // A `service` field equal to a sibling name gets rewritten to the full
+  // deployed name by mergeWranglerConfig — same as `workers-forge build`.
+  const siblings = new Set<string>();
+  if (opts.modules && opts.modules.length > 0) {
+    ensureLoaderRegistered();
+    const siblingFiles = await discoverModuleFiles({ cwd, modules: opts.modules });
+    for (const file of siblingFiles) {
+      let imported: { default?: unknown };
+      try {
+        imported = await import(pathToFileURL(file).href);
+      }
+      catch {
+        // Skip modules that fail to import — they'd already error out under
+        // `workers-forge build`. gen only needs their names for rewriting.
+        continue;
+      }
+      if (isDefinedWorker(imported.default)) {
+        const m = getWorkerMeta(imported.default);
+        if (typeof m.name === 'string' && m.name.length > 0)
+          siblings.add(m.name);
+      }
+    }
+    if (siblings.size > 0) {
+      console.info(`🔗 Discovered ${siblings.size} sibling worker(s)`, {
+        names: [...siblings],
+      });
+    }
+  }
+
   const metaFileAbs = isAbsolute(opts.metaFile) ? opts.metaFile : resolve(cwd, opts.metaFile);
   let imported: { meta?: unknown };
   try {
@@ -127,7 +169,7 @@ export async function gen(opts: GenOptions): Promise<GenResult> {
     sourcePath: '',
     meta,
     base,
-    siblings: new Set(),
+    siblings,
     suffix: activeEnv?.suffix,
     varsOverrides: activeEnv?.vars,
   });

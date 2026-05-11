@@ -1,5 +1,5 @@
 import type { KvStoreRpc } from '@example/workers';
-import { defineWorkerMeta, envs, type InferEnv, service } from 'workers-forge';
+import { defineWorkerMeta, type InferEnv, service } from 'workers-forge';
 
 // Single source of truth for the Next.js worker's wrangler.jsonc.
 // Consumed by `workers-forge gen ./src/app.meta.ts --out ../wrangler.jsonc`.
@@ -13,11 +13,11 @@ export const meta = defineWorkerMeta({
       LOG_LEVEL: '',
     },
     services: {
-      // Cross-package sibling: the service name must match `kv-store`'s
-      // deployed name (`${prefix}kv-store${suffix}`). Because both packages
-      // import the same `workers-forge.config.ts`, prefix + suffix are
-      // guaranteed identical, so this resolves correctly per env.
-      KV_STORE: service<KvStoreRpc>(`${envs.prefix}kv-store${envs.suffix}`),
+      // Just write the short name. workers-forge gen discovers sibling
+      // worker names from the shared config's `modules` glob and rewrites
+      // this to `${prefix}kv-store${suffix}` automatically — same behavior
+      // as `workers-forge build`.
+      KV_STORE: service<KvStoreRpc>('kv-store'),
     },
   },
   // `_raw` is written verbatim — required by @opennextjs/cloudflare.
