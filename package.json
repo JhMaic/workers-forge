@@ -2,7 +2,7 @@
   "name": "workers-forge",
   "description": "Convention-driven build, dev, and deploy tooling for Cloudflare Workers monorepos",
   "type": "module",
-  "version": "1.0.7-beta.0",
+  "version": "1.0.7",
   "license": "MIT",
   "author": "JhMaic",
   "homepage": "https://github.com/JhMaic/workers-forge#readme",
