@@ -2,17 +2,21 @@ import { readFile } from 'node:fs/promises';
 
 interface RawWranglerConfig {
   services?: Array<{ binding?: string; service?: string }>;
+  durable_objects?: {
+    bindings?: Array<{ name?: string; class_name?: string; script_name?: string }>;
+  };
 }
 
 /**
  * Reads `<outputPath>` (a JSON file written by build()) and returns the local
- * module short names of its service-binding dependencies.
+ * module short names of its dependencies — both service bindings and Durable
+ * Object cross-script bindings.
  *
- * Each `services[].service` value is the prefixed worker name (e.g.
- * `immi-yoyaku-support-crawler`); we strip `prefix` to get the local module
- * name. A binding whose `service` value does NOT start with `prefix` is
- * treated as an external worker and throws (cross-deployment service
- * bindings can't be wired up by `wrangler dev`).
+ * Each `services[].service` and `durable_objects.bindings[].script_name`
+ * value is a prefixed worker name (e.g. `immi-yoyaku-support-crawler`); we
+ * strip `prefix` to get the local module name. A binding whose value does
+ * NOT start with `prefix` is treated as an external worker and throws
+ * (cross-deployment bindings can't be wired up by `wrangler dev`).
  */
 export async function parseServiceDeps(
   outputPath: string,
@@ -22,18 +26,24 @@ export async function parseServiceDeps(
   const text = await readFile(outputPath, 'utf-8');
   const parsed = JSON.parse(text) as RawWranglerConfig;
   const out: string[] = [];
-  for (const svc of parsed.services ?? []) {
-    if (!svc.service)
-      continue;
-    if (!svc.service.startsWith(prefix)) {
+  const push = (target: string, label: string) => {
+    if (!target.startsWith(prefix)) {
       throw new Error(
-        `worker "${selfName}" depends on external service "${svc.service}" `
+        `worker "${selfName}" depends on external ${label} "${target}" `
         + `(does not start with prefix "${prefix}")`,
       );
     }
-    const local = svc.service.slice(prefix.length);
-    if (local !== selfName)
+    const local = target.slice(prefix.length);
+    if (local !== selfName && !out.includes(local))
       out.push(local);
+  };
+  for (const svc of parsed.services ?? []) {
+    if (svc.service)
+      push(svc.service, 'service');
+  }
+  for (const b of parsed.durable_objects?.bindings ?? []) {
+    if (b.script_name)
+      push(b.script_name, 'durable_object script');
   }
   return out;
 }

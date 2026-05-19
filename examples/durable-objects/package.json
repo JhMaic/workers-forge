@@ -1,0 +1,16 @@
+{
+  "name": "durable-objects-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "workers-forge dev --env local",
+    "build": "workers-forge build --env local",
+    "deploy:stage": "workers-forge deploy --build --env stage"
+  },
+  "devDependencies": {
+    "tsx": "^4.22.3",
+    "workers-forge": "latest",
+    "wrangler": "^4.93.0"
+  }
+}

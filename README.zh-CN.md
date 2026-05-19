@@ -26,6 +26,7 @@
 - [Hono 适配器](#hono-适配器)
 - [Service Bindings 与 RPC](#service-bindings-与-rpc)
   - [Promise 管道调用](#promise-管道调用)
+- [Durable Objects](#durable-objects)
 - [配置参考](#配置参考)
   - [KitConfig 字段](#kitconfig-字段)
   - [共享 wrangler 配置（`baseConfig`）](#共享-wrangler-配置baseconfig)
@@ -453,6 +454,111 @@ const profile = await this.env.USER_SERVICE.user(userId).profile();
 ```
 
 `ServiceStub<RPC>` 会自动将返回类型继承自 `Rpc.Stubable`（`RpcTarget` 子类满足此条件）的方法映射为 `Rpc.Result<T>`，因此 TypeScript 能够理解这种链式调用，并对最终 await 的调用保留完整的返回类型推断。
+
+---
+
+## Durable Objects
+
+`defineDurableObject(meta, methods)` 是 DO 版本的 `defineWorker` —— 一个模块文件即一个完整 Worker 脚本，承载 DO 类。构建期自动生成 `wrangler.jsonc`（含 `migrations`）以及一个 entry barrel，把类以派生 PascalCase 命名导出，让 workerd 能在 bundle 里解析。消费侧通过 `durableObject<RPC>('name')` 引用，与 `service<RPC>('name')` 完全一致：类型只走 `import type`，零运行时耦合。
+
+**1. 定义 DO（单文件）：**
+
+```ts
+// src/modules/counter/index.ts
+import { defineDurableObject, type DurableObjectRPC } from 'workers-forge';
+
+const counter = defineDurableObject(
+  {
+    name: 'counter',          // worker 脚本名；class_name 从 name 派生（kebab/snake → PascalCase）
+    // storage: 'sqlite',     // 默认；使用 'kv' 切到旧版 KV 后端
+    // bindings: { ... },     // 与 WorkerBindings 同形态 —— DO 方法内 this.env 拥有完整类型
+  },
+  {
+    async increment(by = 1) {
+      const v = (await this.ctx.storage.get<number>('n')) ?? 0;
+      await this.ctx.storage.put('n', v + by);
+      return v + by;
+    },
+    async value() {
+      return (await this.ctx.storage.get<number>('n')) ?? 0;
+    },
+  },
+);
+
+export type CounterRPC = DurableObjectRPC<typeof counter>;
+export default counter;
+```
+
+**2. 在其它 worker 中消费：**
+
+```ts
+// src/modules/gateway/index.ts
+import { defineWorker, durableObject } from 'workers-forge';
+import type { CounterRPC } from '../counter';
+
+export default defineWorker(
+  {
+    name: 'gateway',
+    bindings: {
+      durable_objects: {
+        // Record 的 key 即 this.env 上的绑定名
+        COUNTER: durableObject<CounterRPC>('counter'),
+      },
+    },
+  },
+  {
+    async fetch() {
+      const stub = this.env.COUNTER.get(this.env.COUNTER.idFromName('global'));
+      const n = await stub.increment();   // 完整 RPC 类型
+      return Response.json({ n });
+    },
+  },
+);
+```
+
+**3. 生成的配置（由 kit 托管）：**
+
+```jsonc
+// .build/counter/wrangler.jsonc —— 自动生成
+{
+  "name": "pfx-counter",
+  "main": "entry.ts",
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Counter"] }]
+}
+```
+
+```jsonc
+// .build/gateway/wrangler.jsonc —— 自动生成
+{
+  "name": "pfx-gateway",
+  "durable_objects": {
+    "bindings": [
+      { "name": "COUNTER", "class_name": "Counter", "script_name": "pfx-counter" }
+    ]
+  }
+}
+```
+
+> **Sibling 重写：** `script_name` 与 `services` 走完全相同的 `prefix`/`suffix` 重写代码路径。同项目模块自动重写为部署后的全名，外部 DO 名（不在 siblings 集合）原样透传。
+
+**进阶 migrations** —— 默认只生成首次 `new_classes` / `new_sqlite_classes`。需要 rename / delete 时通过 `_raw.migrations` 覆盖：
+
+```ts
+defineDurableObject(
+  {
+    name: 'counter',
+    _raw: {
+      migrations: [
+        { tag: 'v1', new_sqlite_classes: ['Counter'] },
+        { tag: 'v2', renamed_classes: [{ from: 'Counter', to: 'CounterV2' }] },
+      ],
+    },
+  },
+  { /* methods */ },
+);
+```
+
+`DurableObjectRPC<typeof counter>` 抽取 DO 的公开 RPC 表面 —— 排除平台内置 handler（`alarm`、`fetch`、`connect`、`webSocketMessage`/`Close`/`Error`），保留用户方法，与 `WorkerRPC<typeof worker>` 对齐。
 
 ---
 

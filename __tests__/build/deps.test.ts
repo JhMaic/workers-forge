@@ -52,6 +52,44 @@ describe('parseServiceDeps', () => {
     });
     expect(await parseServiceDeps(file, prefix, 'a')).toEqual([]);
   });
+
+  it('also includes durable_objects script_name dependencies', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'deps-'));
+    const file = await writeWrangler(dir, 'gateway', {
+      name: 'pfx-gateway',
+      durable_objects: {
+        bindings: [
+          { name: 'COUNTER', class_name: 'Counter', script_name: 'pfx-counter' },
+        ],
+      },
+    });
+    expect(await parseServiceDeps(file, prefix, 'gateway')).toEqual(['counter']);
+  });
+
+  it('combines services and durable_objects deps without duplicates', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'deps-'));
+    const file = await writeWrangler(dir, 'gateway', {
+      name: 'pfx-gateway',
+      services: [{ binding: 'D', service: 'pfx-data' }],
+      durable_objects: {
+        bindings: [
+          { name: 'COUNTER', class_name: 'Counter', script_name: 'pfx-counter' },
+          { name: 'C2', class_name: 'Counter', script_name: 'pfx-data' },
+        ],
+      },
+    });
+    expect(await parseServiceDeps(file, prefix, 'gateway')).toEqual(['data', 'counter']);
+  });
+
+  it('throws on external durable_objects script (no prefix match)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'deps-'));
+    const file = await writeWrangler(dir, 'a', {
+      durable_objects: {
+        bindings: [{ name: 'X', class_name: 'X', script_name: 'other-do' }],
+      },
+    });
+    await expect(parseServiceDeps(file, prefix, 'a')).rejects.toThrow(/external durable_object/);
+  });
 });
 
 describe('resolveClosure', () => {

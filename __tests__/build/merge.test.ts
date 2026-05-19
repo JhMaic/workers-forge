@@ -180,4 +180,127 @@ describe('mergeWranglerConfig', () => {
     expect((config.vars as any).K).toBe('from-raw');
     expect(config.no_bundle).toBe(true);
   });
+
+  describe('durable_objects bindings', () => {
+    it('emits durable_objects.bindings with derived class_name and rewritten sibling script_name', () => {
+      const config = mergeWranglerConfig({
+        moduleName: 'gateway',
+        prefix: 'pfx-',
+        sourcePath: 'src.ts',
+        meta: {
+          name: 'gateway',
+          bindings: {
+            durable_objects: {
+              COUNTER: { scriptName: 'counter' },
+              EXT: { scriptName: 'external-do' },
+              STG: { scriptName: 'counter', environment: 'staging' },
+            },
+          },
+        },
+        base: defaultBaseConfig,
+        siblings: new Set(['gateway', 'counter']),
+      });
+      expect(config.durable_objects).toEqual({
+        bindings: [
+          { name: 'COUNTER', class_name: 'Counter', script_name: 'pfx-counter' },
+          { name: 'EXT', class_name: 'ExternalDo', script_name: 'external-do' },
+          { name: 'STG', class_name: 'Counter', script_name: 'pfx-counter', environment: 'staging' },
+        ],
+      });
+    });
+
+    it('applies suffix to sibling DO script_name', () => {
+      const config = mergeWranglerConfig({
+        moduleName: 'gateway',
+        prefix: 'pfx-',
+        sourcePath: 'src.ts',
+        meta: {
+          name: 'gateway',
+          bindings: { durable_objects: { COUNTER: { scriptName: 'counter' } } },
+        },
+        base: defaultBaseConfig,
+        siblings: new Set(['gateway', 'counter']),
+        suffix: '-stage',
+      });
+      expect((config.durable_objects as any).bindings[0].script_name).toBe('pfx-counter-stage');
+    });
+  });
+
+  describe('durable_object module (host)', () => {
+    it('auto-generates sqlite migration with derived class name', () => {
+      const config = mergeWranglerConfig({
+        moduleName: 'counter',
+        prefix: 'pfx-',
+        sourcePath: 'entry.ts',
+        meta: { name: 'counter' },
+        kind: 'durable_object',
+        base: defaultBaseConfig,
+      });
+      expect(config.migrations).toEqual([
+        { tag: 'v1', new_sqlite_classes: ['Counter'] },
+      ]);
+      // Host script does not auto-bind to its own DO — user must opt in.
+      expect(config.durable_objects).toBeUndefined();
+    });
+
+    it('routes storage="kv" to new_classes instead of new_sqlite_classes', () => {
+      const config = mergeWranglerConfig({
+        moduleName: 'counter',
+        prefix: 'pfx-',
+        sourcePath: 'entry.ts',
+        meta: { name: 'counter', storage: 'kv' },
+        kind: 'durable_object',
+        base: defaultBaseConfig,
+      });
+      expect(config.migrations).toEqual([
+        { tag: 'v1', new_classes: ['Counter'] },
+      ]);
+    });
+
+    it('derives class name from kebab-case module name', () => {
+      const config = mergeWranglerConfig({
+        moduleName: 'user-session-store',
+        prefix: 'pfx-',
+        sourcePath: 'entry.ts',
+        meta: { name: 'user-session-store' },
+        kind: 'durable_object',
+        base: defaultBaseConfig,
+      });
+      expect((config.migrations as any[])[0].new_sqlite_classes).toEqual(['UserSessionStore']);
+    });
+
+    it('_raw.migrations overrides auto-generated migration', () => {
+      const config = mergeWranglerConfig({
+        moduleName: 'counter',
+        prefix: 'pfx-',
+        sourcePath: 'entry.ts',
+        meta: {
+          name: 'counter',
+          _raw: {
+            migrations: [
+              { tag: 'v1', new_sqlite_classes: ['Counter'] },
+              { tag: 'v2', renamed_classes: [{ from: 'Counter', to: 'CounterV2' }] },
+            ],
+          },
+        },
+        kind: 'durable_object',
+        base: defaultBaseConfig,
+      });
+      expect(config.migrations).toHaveLength(2);
+      expect((config.migrations as any[])[1].tag).toBe('v2');
+    });
+
+    it('does NOT emit triggers for DO modules even if meta has trigger-shaped fields', () => {
+      const config = mergeWranglerConfig({
+        moduleName: 'counter',
+        prefix: 'pfx-',
+        sourcePath: 'entry.ts',
+        meta: { name: 'counter' },
+        kind: 'durable_object',
+        base: defaultBaseConfig,
+      });
+      expect(config.triggers).toBeUndefined();
+      expect(config.tail_consumers).toBeUndefined();
+    });
+  });
 });

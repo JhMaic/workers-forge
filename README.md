@@ -26,6 +26,7 @@ Declare your workers and bindings once in TypeScript — the kit generates `wran
 - [Hono Adapter](#hono-adapter)
 - [Service Bindings & RPC](#service-bindings--rpc)
   - [Promise pipelining](#promise-pipelining)
+- [Durable Objects](#durable-objects)
 - [Config Reference](#config-reference)
   - [KitConfig fields](#kitconfig-fields)
   - [Shared wrangler config (`baseConfig`)](#shared-wrangler-config-baseconfig)
@@ -453,6 +454,111 @@ const profile = await this.env.USER_SERVICE.user(userId).profile();
 ```
 
 `ServiceStub<RPC>` automatically maps any method whose return type extends `Rpc.Stubable` (which `RpcTarget` subclasses do) to `Rpc.Result<T>`, so TypeScript understands the chaining and preserves full return-type inference on the final awaited call.
+
+---
+
+## Durable Objects
+
+`defineDurableObject(meta, methods)` is the DO equivalent of `defineWorker` — one module file becomes one Worker script that hosts the DO class. The build emits the `wrangler.jsonc` (with auto-generated `migrations`) and an entry barrel that re-exports the class under its derived PascalCase name so workerd can resolve it. Consumers reference the DO with `durableObject<RPC>('name')`, mirroring `service<RPC>('name')` exactly: type-only import on the consumer side, zero runtime coupling.
+
+**1. Define the DO (single file):**
+
+```ts
+// src/modules/counter/index.ts
+import { defineDurableObject, type DurableObjectRPC } from 'workers-forge';
+
+const counter = defineDurableObject(
+  {
+    name: 'counter',          // worker script name; class_name is derived (kebab/snake → PascalCase)
+    // storage: 'sqlite',     // default; use 'kv' for the legacy KV-backed backend
+    // bindings: { ... },     // same WorkerBindings shape — typed this.env inside DO methods
+  },
+  {
+    async increment(by = 1) {
+      const v = (await this.ctx.storage.get<number>('n')) ?? 0;
+      await this.ctx.storage.put('n', v + by);
+      return v + by;
+    },
+    async value() {
+      return (await this.ctx.storage.get<number>('n')) ?? 0;
+    },
+  },
+);
+
+export type CounterRPC = DurableObjectRPC<typeof counter>;
+export default counter;
+```
+
+**2. Consume it from another worker:**
+
+```ts
+// src/modules/gateway/index.ts
+import { defineWorker, durableObject } from 'workers-forge';
+import type { CounterRPC } from '../counter';
+
+export default defineWorker(
+  {
+    name: 'gateway',
+    bindings: {
+      durable_objects: {
+        // Record key becomes the binding name on this.env.
+        COUNTER: durableObject<CounterRPC>('counter'),
+      },
+    },
+  },
+  {
+    async fetch() {
+      const stub = this.env.COUNTER.get(this.env.COUNTER.idFromName('global'));
+      const n = await stub.increment();   // fully typed RPC call
+      return Response.json({ n });
+    },
+  },
+);
+```
+
+**3. Generated config (handled by the kit):**
+
+```jsonc
+// .build/counter/wrangler.jsonc — auto-generated
+{
+  "name": "pfx-counter",
+  "main": "entry.ts",
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Counter"] }]
+}
+```
+
+```jsonc
+// .build/gateway/wrangler.jsonc — auto-generated
+{
+  "name": "pfx-gateway",
+  "durable_objects": {
+    "bindings": [
+      { "name": "COUNTER", "class_name": "Counter", "script_name": "pfx-counter" }
+    ]
+  }
+}
+```
+
+> **Sibling rewrite:** `script_name` is rewritten with `prefix`/`suffix` exactly like `services` are — same code path. Non-sibling names (e.g. an external DO worker) pass through unchanged.
+
+**Advanced migrations** — the default migration only handles the initial `new_classes` / `new_sqlite_classes`. For rename or delete migrations, override via `_raw.migrations`:
+
+```ts
+defineDurableObject(
+  {
+    name: 'counter',
+    _raw: {
+      migrations: [
+        { tag: 'v1', new_sqlite_classes: ['Counter'] },
+        { tag: 'v2', renamed_classes: [{ from: 'Counter', to: 'CounterV2' }] },
+      ],
+    },
+  },
+  { /* methods */ },
+);
+```
+
+`DurableObjectRPC<typeof counter>` extracts the public RPC surface from a `defineDurableObject` instance — strips built-in handlers (`alarm`, `fetch`, `connect`, `webSocketMessage`/`Close`/`Error`) and leaves your custom methods, mirroring `WorkerRPC<typeof worker>`.
 
 ---
 

@@ -16,7 +16,13 @@ export interface DeployGraph {
   order: string[];
 }
 
-interface RawCfg { name?: string; services?: Array<{ binding?: string; service?: string }> }
+interface RawCfg {
+  name?: string;
+  services?: Array<{ binding?: string; service?: string }>;
+  durable_objects?: {
+    bindings?: Array<{ name?: string; class_name?: string; script_name?: string }>;
+  };
+}
 
 export async function loadGraph(outputs: readonly string[], prefix: string): Promise<DeployGraph> {
   const parsed = await Promise.all(outputs.map(async (cfgPath) => {
@@ -32,17 +38,23 @@ export async function loadGraph(outputs: readonly string[], prefix: string): Pro
   const depsByName = new Map<string, string[]>();
   for (const p of parsed) {
     const deps: string[] = [];
-    for (const svc of p.cfg.services ?? []) {
-      if (!svc.service)
-        continue;
-      const depShort = fullToShort.get(svc.service);
+    const addDep = (target: string, kind: string) => {
+      const depShort = fullToShort.get(target);
       if (!depShort || depShort === p.name) {
-        if (svc.service.startsWith(prefix) && !fullToShort.has(svc.service))
-          console.warn(`[workers-forge] deploy: service "${svc.service}" has prefix "${prefix}" but was not found in build outputs — ignored for ordering (typo?)`);
-        continue;
+        if (target.startsWith(prefix) && !fullToShort.has(target))
+          console.warn(`[workers-forge] deploy: ${kind} "${target}" has prefix "${prefix}" but was not found in build outputs — ignored for ordering (typo?)`);
+        return;
       }
       if (!deps.includes(depShort))
         deps.push(depShort);
+    };
+    for (const svc of p.cfg.services ?? []) {
+      if (svc.service)
+        addDep(svc.service, 'service');
+    }
+    for (const b of p.cfg.durable_objects?.bindings ?? []) {
+      if (b.script_name)
+        addDep(b.script_name, 'durable_object script');
     }
     depsByName.set(p.name, deps);
   }

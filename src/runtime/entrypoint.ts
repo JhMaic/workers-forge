@@ -5,7 +5,11 @@
 // registered to stub `cloudflare:*` specifiers so worker modules can be
 // dynamically imported in Node without crashing. Under Vitest, test files
 // `vi.mock('cloudflare:workers', ...)` to provide the same stub.
-import { RpcTarget as RpcTargetImpl, WorkerEntrypoint as WorkerEntrypointImpl } from 'cloudflare:workers';
+import {
+  DurableObject as DurableObjectImpl,
+  RpcTarget as RpcTargetImpl,
+  WorkerEntrypoint as WorkerEntrypointImpl,
+} from 'cloudflare:workers';
 
 export const WorkerEntrypoint = WorkerEntrypointImpl;
 // eslint-disable-next-line ts/no-redeclare
@@ -14,3 +18,7 @@ export type WorkerEntrypoint<Env = unknown> = WorkerEntrypointImpl<Env>;
 export const RpcTarget = RpcTargetImpl;
 // eslint-disable-next-line ts/no-redeclare
 export type RpcTarget = RpcTargetImpl;
+
+export const DurableObject = DurableObjectImpl;
+// eslint-disable-next-line ts/no-redeclare
+export type DurableObject<Env = unknown> = DurableObjectImpl<Env>;

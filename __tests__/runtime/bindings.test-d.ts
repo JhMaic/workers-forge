@@ -1,12 +1,14 @@
 import type {
   D1Database,
+  DurableObjectNamespace,
   Fetcher,
   KVNamespace,
+  Rpc,
 } from '@cloudflare/workers-types';
 import type { InferEnv, ServiceStub, WorkerBindings } from '../../src/runtime/bindings';
 import { RpcTarget } from 'cloudflare:workers';
 import { describe, expectTypeOf, it } from 'vitest';
-import { service } from '../../src/runtime/bindings';
+import { durableObject, service } from '../../src/runtime/bindings';
 
 interface CrawlerRPC {
   crawl: (name: string) => Promise<{ ok: true }>;
@@ -41,6 +43,28 @@ describe('inferEnv', () => {
   it('returns empty object for undefined bindings', () => {
     type Env = InferEnv<{ bindings: undefined }>;
     expectTypeOf<Env>().toEqualTypeOf<Record<never, never>>();
+  });
+});
+
+describe('inferEnv (durable_objects)', () => {
+  interface CounterRPC {
+    increment: (by: number) => Promise<number>;
+  }
+
+  it('maps durableObject<RPC>("name") to DurableObjectNamespace<RPC & Branded>', () => {
+    const _bindings = {
+      durable_objects: { COUNTER: durableObject<CounterRPC>('counter') },
+    } as const satisfies WorkerBindings;
+    type Env = InferEnv<{ bindings: typeof _bindings }>;
+    expectTypeOf<Env['COUNTER']>().toEqualTypeOf<DurableObjectNamespace<CounterRPC & Rpc.DurableObjectBranded>>();
+  });
+
+  it('falls back to bare DurableObjectNamespace when RPC type omitted', () => {
+    const _bindings = {
+      durable_objects: { PLAIN: durableObject('plain') },
+    } as const satisfies WorkerBindings;
+    type Env = InferEnv<{ bindings: typeof _bindings }>;
+    expectTypeOf<Env['PLAIN']>().toEqualTypeOf<DurableObjectNamespace>();
   });
 });
 

@@ -2,11 +2,13 @@ import type {
   Ai,
   AnalyticsEngineDataset,
   D1Database,
+  DurableObjectNamespace,
   Fetcher,
   Hyperdrive,
   KVNamespace,
   Queue,
   R2Bucket,
+  Rpc,
   SecretsStoreSecret,
   VectorizeIndex,
 } from '@cloudflare/workers-types';
@@ -91,6 +93,62 @@ export function service<RPC = unknown>(
   environment?: string,
 ): ServiceBindingDecl<RPC> {
   return environment ? { service: name, environment } : { service: name };
+}
+
+/**
+ * Declaration shape for a Durable Object binding, used as a value in
+ * `WorkerBindings.durable_objects`. The Record key becomes the wrangler
+ * `name` field; the value carries the target DO module's worker name and
+ * (via a phantom `__rpc`) the RPC type for `this.env.<binding>` inference.
+ *
+ * The runtime `class_name` is derived from `scriptName` at build time and
+ * is never written by the user.
+ */
+export interface DurableObjectBindingDecl<RPC = unknown> {
+  /**
+   * Worker `name` of the DO module hosting the class. May be rewritten with
+   * the project prefix/suffix during build when it matches a sibling module.
+   *
+   * @example
+   * // TypeScript
+   * durable_objects: { COUNTER: { scriptName: 'counter' } }
+   *
+   * // wrangler.jsonc output (with prefix "pfx-" and suffix "-stage")
+   * "durable_objects": { "bindings": [{ "name": "COUNTER", "class_name": "Counter", "script_name": "pfx-counter-stage" }] }
+   */
+  scriptName: string;
+  /**
+   * Optional named environment of the target DO module to bind to.
+   */
+  environment?: string;
+  /**
+   * Phantom field — type-only marker carrying the DO's RPC interface for
+   * IntelliSense on `this.env.<binding>.get(id).<method>(...)`. Stripped at
+   * build time before emitting wrangler.jsonc.
+   */
+  __rpc?: RPC;
+}
+
+/**
+ * Creates a Durable Object binding declaration for use as a value in
+ * `WorkerBindings.durable_objects`. Mirrors `service<RPC>('name')` exactly:
+ * the Record key becomes the wrangler binding `name`, the string argument is
+ * the target DO module's worker name, and the generic carries the RPC type.
+ *
+ * @param scriptName - The DO module's worker `name` (sibling-rewritten at build time).
+ * @param environment - Optional named environment of the target DO module.
+ *
+ * @example
+ * ```ts
+ * import type { CounterRPC } from '../counter';
+ * durable_objects: { COUNTER: durableObject<CounterRPC>('counter') }
+ * ```
+ */
+export function durableObject<RPC = unknown>(
+  scriptName: string,
+  environment?: string,
+): DurableObjectBindingDecl<RPC> {
+  return environment ? { scriptName, environment } : { scriptName };
 }
 
 /**
@@ -303,6 +361,25 @@ export interface WorkerBindings {
    * "send_email": [{ "name": "MAILER" }]
    */
   send_email?: readonly SendEmailDecl[];
+
+  /**
+   * Durable Object bindings — namespaces for invoking DOs from this worker.
+   * Each Record key becomes the wrangler `name` accessible as `this.env.<key>`.
+   * Use the `durableObject()` helper to declare each entry.
+   *
+   * Note: same-project DO module `scriptName`s are rewritten with the project
+   * prefix/suffix during build. The runtime `class_name` is derived from the
+   * scriptName (kebab/snake → PascalCase) — never written by the user.
+   *
+   * @example
+   * // TypeScript
+   * import type { CounterRPC } from '../counter';
+   * durable_objects: { COUNTER: durableObject<CounterRPC>('counter') }
+   *
+   * // wrangler.jsonc output (with prefix "pfx-")
+   * "durable_objects": { "bindings": [{ "name": "COUNTER", "class_name": "Counter", "script_name": "pfx-counter" }] }
+   */
+  durable_objects?: Readonly<Record<string, DurableObjectBindingDecl>>;
 }
 
 // --- InferEnv helpers ------------------------------------------------------
@@ -324,6 +401,19 @@ type ServiceRecordMap<T extends Readonly<Record<string, ServiceBindingDecl>> | u
               ? ServiceStub<R>
               : Fetcher
           : Fetcher;
+      }
+    : EmptyBindings;
+
+type DurableObjectRecordMap<T extends Readonly<Record<string, DurableObjectBindingDecl>> | undefined>
+  = T extends Readonly<Record<string, DurableObjectBindingDecl>>
+    ? {
+        [K in keyof T]: T[K] extends { __rpc?: infer R }
+          ? unknown extends R
+            ? DurableObjectNamespace
+            : R extends object
+              ? DurableObjectNamespace<R & Rpc.DurableObjectBranded>
+              : DurableObjectNamespace
+          : DurableObjectNamespace;
       }
     : EmptyBindings;
 
@@ -367,6 +457,7 @@ export type InferEnv<C extends { bindings?: WorkerBindings | undefined }>
         | ArrayBindingMap<B['analytics_engine_datasets'], AnalyticsEngineDataset>
         | ArrayBindingMap<B['hyperdrive'], Hyperdrive>
         | SendEmailMap<B['send_email']>
+        | DurableObjectRecordMap<B['durable_objects']>
       >>
       : EmptyBindings
     : EmptyBindings;

@@ -1,12 +1,15 @@
-import type { DefinedWorker } from '../runtime/define';
+import type { DefinedWorker, WorkerMeta } from '../runtime/define';
+import type { DefinedDurableObject, DurableObjectMeta } from '../runtime/durable-object';
 import type { BaseConfig } from './base-config';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { WORKER_NAME_MAX_LEN, WORKER_NAME_REGEX } from '../runtime/constants';
 import { getWorkerMeta } from '../runtime/define';
+import { getDurableObjectMeta } from '../runtime/durable-object';
 import { envs } from '../runtime/envs';
 import { defaultBaseConfig } from './base-config';
+import { deriveClassName } from './internal/derive-class-name';
 import { discoverModuleFiles } from './internal/discover';
 import { readLayeredEnvFiles } from './internal/envfile';
 import { ensureLoaderRegistered } from './internal/loader-register';
@@ -92,6 +95,10 @@ export interface BuildResult {
   outputs: string[];
 }
 
+type ValidEntry
+  = | { kind: 'worker'; file: string; value: DefinedWorker; meta: WorkerMeta }
+    | { kind: 'durable_object'; file: string; value: DefinedDurableObject; meta: DurableObjectMeta };
+
 const DEFAULT_MODULES = [
   'src/modules/**/index.ts',
   '!**/_*/**',
@@ -165,7 +172,7 @@ export async function build(opts: InternalBuildOptions): Promise<BuildResult> {
   });
 
   const errors: string[] = [];
-  const valid: { file: string; worker: DefinedWorker }[] = [];
+  const valid: ValidEntry[] = [];
 
   for (const file of files) {
     let imported: { default?: unknown };
@@ -177,27 +184,42 @@ export async function build(opts: InternalBuildOptions): Promise<BuildResult> {
       continue;
     }
     const result = validateModule(relative(cwd, file), imported.default, opts.prefix);
-    if (result.ok)
-      valid.push({ file, worker: imported.default as DefinedWorker });
-    else
+    if (!result.ok) {
       errors.push(...result.errors);
+      continue;
+    }
+    if (result.kind === 'worker') {
+      valid.push({
+        kind: 'worker',
+        file,
+        value: imported.default as DefinedWorker,
+        meta: getWorkerMeta(imported.default as DefinedWorker),
+      });
+    }
+    else {
+      valid.push({
+        kind: 'durable_object',
+        file,
+        value: imported.default as DefinedDurableObject,
+        meta: getDurableObjectMeta(imported.default as DefinedDurableObject),
+      });
+    }
   }
 
   errors.push(...validateRegistry(valid));
 
   if (activeEnv) {
-    for (const { file, worker } of valid) {
-      const meta = getWorkerMeta(worker);
-      const fullName = `${opts.prefix}${meta.name}${activeEnv.suffix}`;
+    for (const v of valid) {
+      const fullName = `${opts.prefix}${v.meta.name}${activeEnv.suffix}`;
       if (!WORKER_NAME_REGEX.test(fullName)) {
         errors.push(
-          `${relative(cwd, file)}: env-suffixed worker name "${fullName}" must match `
+          `${relative(cwd, v.file)}: env-suffixed worker name "${fullName}" must match `
           + `${WORKER_NAME_REGEX}`,
         );
       }
       else if (fullName.length > WORKER_NAME_MAX_LEN) {
         errors.push(
-          `${relative(cwd, file)}: env-suffixed worker name "${fullName}" length `
+          `${relative(cwd, v.file)}: env-suffixed worker name "${fullName}" length `
           + `${fullName.length} exceeds limit ${WORKER_NAME_MAX_LEN}`,
         );
       }
@@ -209,9 +231,9 @@ export async function build(opts: InternalBuildOptions): Promise<BuildResult> {
     throw new Error(`Validation failed:\n${errors.map(e => `  - ${e}`).join('\n')}`);
   }
 
-  // siblings must be computed from ALL valid workers so service-binding rewrites
+  // siblings must be computed from ALL valid modules so cross-binding rewrites
   // refer to the full deployed set, even when --app limits what gets generated.
-  const siblings = new Set(valid.map(v => getWorkerMeta(v.worker).name));
+  const siblings = new Set(valid.map(v => v.meta.name));
 
   let toGenerate = valid;
   if (opts.only && opts.only.length > 0) {
@@ -222,7 +244,7 @@ export async function build(opts: InternalBuildOptions): Promise<BuildResult> {
       }
     }
     const requested = new Set(opts.only);
-    toGenerate = valid.filter(v => requested.has(getWorkerMeta(v.worker).name));
+    toGenerate = valid.filter(v => requested.has(v.meta.name));
   }
 
   // Selective build: preserve other workers' output; only refresh the requested
@@ -235,19 +257,38 @@ export async function build(opts: InternalBuildOptions): Promise<BuildResult> {
   const outputs: string[] = [];
   const deployed: string[] = [];
 
-  for (const { file, worker } of toGenerate) {
-    const meta = getWorkerMeta(worker);
-    const moduleOutDir = join(outDir, meta.name);
+  for (const v of toGenerate) {
+    const moduleOutDir = join(outDir, v.meta.name);
     await rm(moduleOutDir, { recursive: true, force: true });
     await mkdir(moduleOutDir, { recursive: true });
     const outFile = join(moduleOutDir, 'wrangler.jsonc');
-    const sourceRel = relative(moduleOutDir, file).replaceAll('\\', '/');
+    const sourceRel = relative(moduleOutDir, v.file).replaceAll('\\', '/');
+
+    let mainPath: string;
+    if (v.kind === 'durable_object') {
+      // Cloudflare resolves a DO class by `class_name` in the host script's
+      // bundle exports. The user's module only has a `default` export, so we
+      // emit a barrel that re-exports it under the derived PascalCase name and
+      // adds a no-op 405 fetch handler (Cloudflare requires at least one event
+      // handler per script).
+      const className = deriveClassName(v.meta.name);
+      const entryPath = join(moduleOutDir, 'entry.ts');
+      const entrySrc
+        = `export { default as ${className} } from '${stripExt(sourceRel)}';\n`
+          + `export default { fetch: () => new Response(null, { status: 405 }) };\n`;
+      await writeFile(entryPath, entrySrc, 'utf-8');
+      mainPath = 'entry.ts';
+    }
+    else {
+      mainPath = sourceRel;
+    }
 
     const merged = mergeWranglerConfig({
-      moduleName: meta.name,
+      moduleName: v.meta.name,
       prefix: opts.prefix,
-      sourcePath: sourceRel,
-      meta,
+      sourcePath: mainPath,
+      meta: v.meta,
+      kind: v.kind,
       base,
       siblings,
       suffix: activeEnv?.suffix,
@@ -256,7 +297,7 @@ export async function build(opts: InternalBuildOptions): Promise<BuildResult> {
 
     await writeFile(outFile, `${JSON.stringify(merged, null, 2)}\n`, 'utf-8');
     outputs.push(outFile);
-    deployed.push(meta.name);
+    deployed.push(v.meta.name);
   }
 
   console.info(`✅ Generated ${outputs.length} wrangler config(s)`, {
@@ -264,4 +305,8 @@ export async function build(opts: InternalBuildOptions): Promise<BuildResult> {
   });
 
   return { deployed, outputs };
+}
+
+function stripExt(p: string): string {
+  return p.replace(/\.tsx?$/u, '').replace(/\.[mc]?js$/u, '');
 }

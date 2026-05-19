@@ -1,13 +1,23 @@
 import type { WorkerBindings } from '../../runtime/bindings';
 import type { WorkerMeta } from '../../runtime/define';
+import type { DurableObjectMeta } from '../../runtime/durable-object';
 import type { BaseConfig } from '../base-config';
+import { deriveClassName } from './derive-class-name';
 import { triggersToWranglerFields } from './triggers';
+
+export type ModuleKind = 'worker' | 'durable_object';
 
 export interface MergeArgs {
   moduleName: string;
   prefix: string;
   sourcePath: string;
-  meta: WorkerMeta;
+  meta: WorkerMeta | DurableObjectMeta;
+  /**
+   * Discriminator selected by `validateModule`. Drives DO-only behavior:
+   *   - emit `migrations` with the derived class name
+   *   - skip trigger merging (DOs have no fetch-level triggers)
+   */
+  kind?: ModuleKind;
   base: BaseConfig;
   // Names of sibling modules in the same build. A `services[].service` that
   // matches one of these is rewritten to `${prefix}${name}` so the binding
@@ -44,6 +54,7 @@ const PASSTHROUGH_BINDINGS: readonly (keyof WorkerBindings)[] = [
 
 export function mergeWranglerConfig(args: MergeArgs): Record<string, unknown> {
   const { moduleName, prefix, sourcePath, meta, base, siblings, suffix, varsOverrides } = args;
+  const kind: ModuleKind = args.kind ?? 'worker';
 
   const suffixPart = suffix ?? '';
   const out: Record<string, unknown> = {
@@ -75,17 +86,43 @@ export function mergeWranglerConfig(args: MergeArgs): Record<string, unknown> {
           : { binding, service: resolved };
       });
     }
+    if (bindings.durable_objects) {
+      out.durable_objects = {
+        bindings: Object.entries(bindings.durable_objects).map(([name, d]) => {
+          const { scriptName, environment } = d;
+          const isSibling = siblings?.has(scriptName) ?? false;
+          const resolvedScript = isSibling ? `${prefix}${scriptName}${suffixPart}` : scriptName;
+          const entry: Record<string, string> = {
+            name,
+            class_name: deriveClassName(scriptName),
+            script_name: resolvedScript,
+          };
+          if (environment)
+            entry.environment = environment;
+          return entry;
+        }),
+      };
+    }
     if (bindings.queues?.producers)
       out.queues = { ...(out.queues as object | undefined), producers: [...bindings.queues.producers] };
   }
 
-  const triggerFields = triggersToWranglerFields(meta.triggers);
-  if (triggerFields.triggers)
-    out.triggers = triggerFields.triggers;
-  if (triggerFields.queues?.consumers)
-    out.queues = { ...(out.queues as object | undefined), consumers: triggerFields.queues.consumers };
-  if (triggerFields.tail_consumers)
-    out.tail_consumers = triggerFields.tail_consumers;
+  if (kind === 'worker') {
+    const triggerFields = triggersToWranglerFields((meta as WorkerMeta).triggers);
+    if (triggerFields.triggers)
+      out.triggers = triggerFields.triggers;
+    if (triggerFields.queues?.consumers)
+      out.queues = { ...(out.queues as object | undefined), consumers: triggerFields.queues.consumers };
+    if (triggerFields.tail_consumers)
+      out.tail_consumers = triggerFields.tail_consumers;
+  }
+
+  if (kind === 'durable_object') {
+    const doMeta = meta as DurableObjectMeta;
+    const className = deriveClassName(doMeta.name);
+    const migrationKey = doMeta.storage === 'kv' ? 'new_classes' : 'new_sqlite_classes';
+    out.migrations = [{ tag: 'v1', [migrationKey]: [className] }];
+  }
 
   if (meta._raw)
     Object.assign(out, structuredClone(meta._raw as Record<string, unknown>));
