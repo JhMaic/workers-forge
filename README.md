@@ -26,6 +26,7 @@ Declare your workers and bindings once in TypeScript — the kit generates `wran
 - [Hono Adapter](#hono-adapter)
 - [Service Bindings & RPC](#service-bindings--rpc)
   - [Promise pipelining](#promise-pipelining)
+  - [FAQ: Why is my chained RPC call typed as `never`?](#faq-why-is-my-chained-rpc-call-typed-as-never)
 - [Durable Objects](#durable-objects)
 - [Config Reference](#config-reference)
   - [KitConfig fields](#kitconfig-fields)
@@ -454,6 +455,27 @@ const profile = await this.env.USER_SERVICE.user(userId).profile();
 ```
 
 `ServiceStub<RPC>` automatically maps any method whose return type extends `Rpc.Stubable` (which `RpcTarget` subclasses do) to `Rpc.Result<T>`, so TypeScript understands the chaining and preserves full return-type inference on the final awaited call.
+
+### FAQ: Why is my chained RPC call typed as `never`?
+
+If you chain a call through a service binding — e.g. `this.env.DB_SERVICE.someTable().getByIds(ids)` — and TypeScript reports the result as `never`, the cause is almost always a field typed as `unknown` (commonly `Record<string, unknown>`) somewhere in the returned shape.
+
+**Why it happens.** Cloudflare Workers RPC transports values across worker boundaries using [structured clone](https://developers.cloudflare.com/workers/runtime-apis/rpc/#structured-clone). `@cloudflare/workers-types` enforces this at compile time via `Rpc.Result<T>` and `Rpc.Serializable<T>`, which recursively check every field. Because `unknown` is the top type — it could contain functions, Symbols, or unresolved Promises that the runtime would reject — `Serializable<T>` cannot prove safety for `unknown` fields and falls through to `never`. That `never` then propagates up through the whole chained call.
+
+The runtime is **not** broken: structured-clone still serializes any actually-JSON-safe value. The type system is just being conservative — and correctly so, because the same code could later be called with a non-cloneable value and crash at runtime.
+
+**Fix.** Narrow `unknown` fields to a JSON-safe type. `workers-forge` exports an `RpcJson` alias for exactly this:
+
+```ts
+import type { RpcJson } from 'workers-forge';
+
+// Drizzle schema — declare a JSON-mode column as JSON, not `unknown`:
+payload: text('payload', { mode: 'json' }).$type<Record<string, RpcJson>>().notNull(),
+```
+
+This is a precise statement of what the column actually holds (JSON), not a workaround. The chained RPC type then resolves correctly without disabling Cloudflare's structured-clone guarantee.
+
+> **Do not** patch or widen `Rpc.Serializable<T>` in `@cloudflare/workers-types`. The check exists to catch values that would throw `DataCloneError` at runtime — bypassing it would hide real bugs.
 
 ---
 

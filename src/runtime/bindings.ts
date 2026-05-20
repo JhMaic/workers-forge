@@ -17,6 +17,36 @@ type BrowserBinding = Fetcher;
 type EmptyBindings = Record<never, never>;
 
 /**
+ * Recursive JSON-safe value for use in RPC return types and payload fields.
+ *
+ * `@cloudflare/workers-types` exposes `Rpc.Result<T>` and `Rpc.Serializable<T>`
+ * to prove at compile time that a value can survive structured-clone across the
+ * worker RPC boundary. The proof is conservative: any property typed as
+ * `unknown` (commonly `Record<string, unknown>`) fails every branch of
+ * `Serializable<T>` and collapses `Rpc.Result<T>` to `never`, because the type
+ * system cannot prove `unknown` won't carry functions, Symbols, unresolved
+ * Promises, or other values the runtime would reject with `DataCloneError`.
+ *
+ * Use `RpcJson` (or `Record<string, RpcJson>`) for fields you know are
+ * JSON-safe — e.g. D1 columns declared with `mode: 'json'`. This narrows the
+ * type enough for `Serializable<T>` to accept it, restoring end-to-end RPC
+ * typing without disabling the runtime structured-clone check.
+ *
+ * @example
+ * import type { RpcJson } from 'workers-forge';
+ *
+ * // Drizzle schema — declare a JSON-mode column as JSON, not `unknown`:
+ * payload: text('payload', { mode: 'json' }).$type<Record<string, RpcJson>>().notNull(),
+ */
+export type RpcJson =
+  | string
+  | number
+  | boolean
+  | null
+  | RpcJson[]
+  | { readonly [key: string]: RpcJson };
+
+/**
  * Service binding stub — a Fetcher augmented with pipelining-aware RPC methods.
  * - Methods returning RpcTarget (Stubable): uses Rpc.Result for promise pipelining
  * - All other methods: standard async RPC returning Promise<T>.

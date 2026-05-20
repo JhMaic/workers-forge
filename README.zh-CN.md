@@ -26,6 +26,7 @@
 - [Hono 适配器](#hono-适配器)
 - [Service Bindings 与 RPC](#service-bindings-与-rpc)
   - [Promise 管道调用](#promise-管道调用)
+  - [FAQ：为什么链式 RPC 调用被推断为 `never`？](#faq为什么链式-rpc-调用被推断为-never)
 - [Durable Objects](#durable-objects)
 - [配置参考](#配置参考)
   - [KitConfig 字段](#kitconfig-字段)
@@ -454,6 +455,27 @@ const profile = await this.env.USER_SERVICE.user(userId).profile();
 ```
 
 `ServiceStub<RPC>` 会自动将返回类型继承自 `Rpc.Stubable`（`RpcTarget` 子类满足此条件）的方法映射为 `Rpc.Result<T>`，因此 TypeScript 能够理解这种链式调用，并对最终 await 的调用保留完整的返回类型推断。
+
+### FAQ：为什么链式 RPC 调用被推断为 `never`？
+
+当你通过 service binding 进行链式调用 —— 比如 `this.env.DB_SERVICE.someTable().getByIds(ids)` —— 而 TypeScript 把结果推成 `never`，几乎可以肯定是返回结构里某个字段被声明成了 `unknown`（最常见的是 `Record<string, unknown>`）。
+
+**原因。** Cloudflare Workers RPC 在 worker 之间传值用的是 [structured clone](https://developers.cloudflare.com/workers/runtime-apis/rpc/#structured-clone)。`@cloudflare/workers-types` 在编译期通过 `Rpc.Result<T>` / `Rpc.Serializable<T>` 递归检查每个字段。`unknown` 是顶类型 —— 里面可能藏着函数、Symbol、未 resolve 的 Promise 等 runtime 会拒绝的东西 —— 所以 `Serializable<T>` 无法证明它安全，整个链路就落到 `never`。这个 `never` 接着向上贯穿整条调用链。
+
+**runtime 没坏**：structured-clone 仍然能正常序列化任何实际上 JSON 安全的值。类型系统只是保守 —— 而且这种保守是对的，因为同一段代码后续可能被传入不可 clone 的值，runtime 才会爆。
+
+**解法。** 把 `unknown` 字段收窄成 JSON 安全类型。`workers-forge` 为此提供了 `RpcJson` 别名：
+
+```ts
+import type { RpcJson } from 'workers-forge';
+
+// Drizzle schema —— 把以 JSON 形式存储的字段从 `unknown` 改成 `RpcJson`：
+payload: text('payload', { mode: 'json' }).$type<Record<string, RpcJson>>().notNull(),
+```
+
+这是对"该列实际存的是 JSON"的精确声明，不是规避手段。链式 RPC 的类型随之恢复正常，同时 Cloudflare 的 structured-clone 保护没有被绕过。
+
+> **不要** 去 patch 或放宽 `@cloudflare/workers-types` 里的 `Rpc.Serializable<T>`。这个守卫的存在是为了在编译期捕获 runtime 会抛 `DataCloneError` 的值 —— 绕过去会真的把 bug 藏起来。
 
 ---
 

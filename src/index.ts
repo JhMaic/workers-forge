@@ -1,6 +1,7 @@
 export type {
   DurableObjectBindingDecl,
   InferEnv,
+  RpcJson,
   SendEmailDecl,
   ServiceBindingDecl,
   ServiceStub,
