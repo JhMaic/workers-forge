@@ -24,12 +24,42 @@ export interface DevConfig {
    */
   persistTo?: string;
   /**
-   * Per-module port overrides, keyed by module *short name* (the directory
-   * under `outDir`, i.e. the segment between the prefix and the path — e.g.
-   * `crawler` for `<outDir>/crawler/wrangler.jsonc`). Modules without an
-   * override get a randomly assigned free port at dev-time.
+   * Fixed port overrides for the primary `wrangler dev` process of each
+   * "spawn unit". Keys are either:
+   *   - a module *short name* (the directory under `outDir`, e.g. `crawler`
+   *     for `<outDir>/crawler/wrangler.jsonc`), for workers NOT inside any
+   *     `dev.groups` entry; or
+   *   - a *group name* declared in `dev.groups`, in which case the port is
+   *     applied to that group's merged `wrangler dev` invocation.
+   *
+   * Units without an override get a randomly assigned free port at dev-time.
+   * Referencing a worker that lives inside a group is rejected — use the
+   * group name instead.
    */
   ports?: Readonly<Record<string, number>>;
+  /**
+   * Co-host multiple workers in a single `wrangler dev` process by listing
+   * their short names under a group key:
+   *
+   *   dev: {
+   *     groups: { 'queue-stack': ['producer', 'consumer-a', 'consumer-b'] },
+   *     ports:  { 'queue-stack': 8787 },
+   *   }
+   *
+   * The kit will launch one merged child:
+   *   `wrangler dev -c producer/wrangler.jsonc -c consumer-a/wrangler.jsonc …`
+   *
+   * Useful for queue producer/consumer pairs and other workloads that need
+   * to share a single dev session so bindings resolve in-process.
+   *
+   * Rules:
+   *   - The first listed worker is the primary (first `-c`).
+   *   - Group name is used as the log label and as the `dev.ports` key.
+   *   - A worker may belong to at most one group.
+   *   - Group names must not collide with any worker short name.
+   *   - Workers not listed in any group continue to spawn individually.
+   */
+  groups?: Readonly<Record<string, readonly string[]>>;
 }
 
 export interface EnvConfig {

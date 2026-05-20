@@ -580,6 +580,7 @@ export default defineConfig({
   dev: {
     persistTo: '.wrangler/state',
     ports: { api: 8787, web: 8788 },
+    // groups: { 'queue-stack': ['producer', 'consumer'] },  // 可选：合并为单个 wrangler dev
   },
   envs: [
     { name: 'production', envFile: '.env.production', suffix: '' },
@@ -597,7 +598,8 @@ export default defineConfig({
 | `outDir` | `string` | `".build"` | 生成 `wrangler.jsonc` 文件的目录，相对于配置文件解析。 |
 | `baseConfig` | `BaseConfig` | *（见下文）* | 合并到每个生成的 `wrangler.jsonc` 中的 Wrangler 配置字段。 |
 | `dev.persistTo` | `string` | *（无）* | 转发给 `wrangler dev --persist-to`。可通过 `--persist-to` 在运行时覆盖。 |
-| `dev.ports` | `Record<string, number>` | *（自动）* | 按模块短名称键控的固定端口分配。未分配的模块会获得空闲端口。 |
+| `dev.ports` | `Record<string, number>` | *（自动）* | 固定主端口分配。键可以是模块短名称（未分组的 Worker），也可以是 `dev.groups` 的组名（用于合并会话）。未分配的单元获得空闲端口。 |
+| `dev.groups` | `Record<string, string[]>` | *（无）* | 将多个 Worker 共置在同一个 `wrangler dev` 进程中。每个条目把组名映射到一组有序的 Worker 短名称；列表中第一个是主 `-c`。适用于必须共享同一开发会话的 Queue 生产者/消费者对。详见[合并 dev 会话](#合并-dev-会话)。 |
 | `envs` | `EnvConfig[]` | `[]` | staging/production 部署的具名环境。 |
 
 ### 共享 wrangler 配置（`baseConfig`）
@@ -813,10 +815,49 @@ workers-forge dev [options] [-- <wrangler args>]
 |---|---|---|
 | `--config <path>` | `workers-forge.config.ts` | 配置文件路径。 |
 | `--no-build` | 关闭 | 跳过构建步骤，使用 `outDir` 中的现有输出。与 `--env` 不兼容。 |
-| `--app <name>` | *（全部）* | 只运行该模块以及它通过 Service Binding 传递依赖的所有本地 Worker。可重复：`--app api --app web`。 |
+| `--app <name>` | *（全部）* | 只运行该模块以及它通过 Service Binding 传递依赖的所有本地 Worker。可重复：`--app api --app web`。若目标 Worker 属于某个 `dev.groups` 组，整个组会被一同启动。 |
 | `--env <name>` | *（无）* | 激活具名环境（需要全新构建；与 `--no-build` 不兼容）。 |
 | `--persist-to <path>` | 来自配置 | 覆盖本地存储（KV、D1、R2 等）的 `dev.persistTo`。 |
 | `-- <wrangler args>` | | 转发给每个 `wrangler dev` 子进程。保留标志（`--port`、`--config`、`--name`、`--persist-to`、`--inspector-port`）会被拒绝 —— 请通过配置文件设置这些选项。 |
+
+#### 合并 dev 会话
+
+默认情况下 `workers-forge dev` 为每个 Worker 启动一个独立的 `wrangler dev` 进程。某些工作负载 —— 典型如 Cloudflare Queue 的生产者/消费者对 —— 必须共享同一个 `wrangler dev` 会话，绑定才能在进程内解析。在 `dev.groups` 中声明分组即可：
+
+```ts
+// workers-forge.config.ts
+export default defineConfig({
+  prefix: 'qmdemo-',
+  modules: ['src/modules/*/index.ts'],
+  dev: {
+    groups: {
+      'queue-stack': ['producer', 'consumer'],
+    },
+    ports: {
+      'queue-stack': 8787,   // 合并子进程的主端口
+    },
+    persistTo: '.wrangler/state',
+  },
+});
+```
+
+工具会为该组启动单个合并子进程：
+
+```sh
+wrangler dev \
+  -c .build/producer/wrangler.jsonc \
+  -c .build/consumer/wrangler.jsonc \
+  --port 8787 \
+  --persist-to .wrangler/state
+```
+
+规则：
+
+- 组名不能与任何 Worker 短名称冲突，且必须匹配 `[a-z0-9-]+`。
+- 列表中第一个 Worker 为主（第一个 `-c`，`--port` 应用于该 Worker）。
+- 每个 Worker 最多只能属于一个组；未列入任何组的 Worker 仍按独立进程启动。
+- `dev.ports` 的键可以是组名或未分组的 Worker 短名称。若把端口指向组内成员，会被拒绝 —— 请改为把端口设到组上。
+- 完整可运行示例见 [`examples/queues-merged-dev/`](examples/queues-merged-dev/)。
 
 ### deploy
 

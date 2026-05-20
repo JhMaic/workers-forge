@@ -1,10 +1,12 @@
 import type {BuildOptions, BuildResult, InternalBuildOptions} from '../build/build';
+import type {SpawnUnit} from '../build/internal/groups';
 import {build} from '../build/build';
 import {spawn} from 'node:child_process';
 import {readFile} from 'node:fs/promises';
 import {isAbsolute, resolve} from 'node:path';
 import {globby} from 'globby';
 import {parseServiceDeps, resolveClosure} from '../build/internal/deps';
+import {assertPortKeysNotInsideGroup, expandWorkersToUnitKeys, planGroups} from '../build/internal/groups';
 import {
   allocatePorts,
   findFreePort,
@@ -98,9 +100,10 @@ async function outputHasBrowserBinding(outputPath: string): Promise<boolean> {
   }
 }
 
-function spawnOne(
+function spawnUnit(
   cwd: string,
-  output: string,
+  unit: SpawnUnit,
+  unitOutputs: readonly string[],
   port: number,
   inspectorPort: number,
   persistTo: string | undefined,
@@ -108,16 +111,20 @@ function spawnOne(
   io: DevIo,
   needsBrowser: boolean,
 ): SpawnedChild {
-  const name = moduleNameFromOutput(output);
+  const name = unit.key;
   const label = `${name}:${port}`;
+  // For solo workers, pass --inspector-port (current behavior). For groups,
+  // omit it: in multi-config dev wrangler assigns per-member inspector ports
+  // and rejects a single global value.
+  const inspectorArgs = unit.kind === 'solo'
+    ? ['--inspector-port', String(inspectorPort)]
+    : [];
   const args = [
     'dev',
-    '-c',
-    output,
+    ...unitOutputs.flatMap(o => ['-c', o]),
     '--port',
     String(port),
-    '--inspector-port',
-    String(inspectorPort),
+    ...inspectorArgs,
     '--show-interactive-dev-session=false',
     ...(persistTo ? ['--persist-to', persistTo] : []),
     ...extraArgs,
@@ -214,36 +221,46 @@ export async function dev(opts: DevOptions, io?: DevIo): Promise<DevResult> {
     : undefined;
 
   const allNames = outputs.map(moduleNameFromOutput);
-  validatePortConfig(allNames, opts.dev?.ports ?? {});
-  const ports = await allocatePorts(allNames, opts.dev?.ports ?? {});
+  const outputByName = new Map(outputs.map(o => [moduleNameFromOutput(o), o]));
+
+  const plan = planGroups(allNames, opts.dev?.groups);
+  assertPortKeysNotInsideGroup(opts.dev?.ports, plan.groupOf);
+  const unitKeys = plan.units.map(u => u.key);
+  validatePortConfig(unitKeys, opts.dev?.ports ?? {});
+  const ports = await allocatePorts(unitKeys, opts.dev?.ports ?? {});
 
   const only = opts.only ?? [];
+  let unitsToSpawn = plan.units;
   if (only.length > 0) {
-    const outputByName = new Map(outputs.map(o => [moduleNameFromOutput(o), o]));
     const depsByName = new Map<string, readonly string[]>();
     for (const [name, out] of outputByName) {
       const deps = await parseServiceDeps(out, opts.prefix, name);
       depsByName.set(name, deps);
     }
     const { order } = resolveClosure(only, depsByName);
-    outputs = order.map((n) => {
-      const out = outputByName.get(n);
-      if (!out)
-        throw new Error(`unreachable: missing output for ${n}`);
-      return out;
-    });
+    const wantedKeys = new Set(expandWorkersToUnitKeys(order, plan.groupOf));
+    unitsToSpawn = plan.units.filter(u => wantedKeys.has(u.key));
   }
 
   const stagger = opts._spawnDelayMs ?? 400;
   const children: SpawnedChild[] = [];
-  for (let idx = 0; idx < outputs.length; idx++) {
-    const o = outputs[idx]!;
+  for (let idx = 0; idx < unitsToSpawn.length; idx++) {
+    const unit = unitsToSpawn[idx]!;
+    const unitOutputs = unit.members.map((m) => {
+      const out = outputByName.get(m);
+      if (!out)
+        throw new Error(`unreachable: missing output for "${m}" in unit "${unit.key}"`);
+      return out;
+    });
     const inspectorPort = await findFreePort();
-    const needsBrowser = await outputHasBrowserBinding(resolve(cwd, o));
-    children.push(
-      spawnOne(cwd, o, ports[moduleNameFromOutput(o)]!, inspectorPort, persistTo, extraArgs, sink, needsBrowser),
+    const browserChecks = await Promise.all(
+      unitOutputs.map(o => outputHasBrowserBinding(resolve(cwd, o))),
     );
-    if (idx < outputs.length - 1 && stagger > 0)
+    const needsBrowser = browserChecks.some(Boolean);
+    children.push(
+      spawnUnit(cwd, unit, unitOutputs, ports[unit.key]!, inspectorPort, persistTo, extraArgs, sink, needsBrowser),
+    );
+    if (idx < unitsToSpawn.length - 1 && stagger > 0)
       await new Promise(r => setTimeout(r, stagger));
   }
 

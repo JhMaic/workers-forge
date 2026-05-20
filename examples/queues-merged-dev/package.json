@@ -1,0 +1,16 @@
+{
+  "name": "queues-merged-dev-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "workers-forge dev",
+    "build": "workers-forge build",
+    "deploy": "workers-forge deploy --build"
+  },
+  "devDependencies": {
+    "tsx": "^4.22.3",
+    "workers-forge": "latest",
+    "wrangler": "^4.93.0"
+  }
+}

@@ -580,6 +580,7 @@ export default defineConfig({
   dev: {
     persistTo: '.wrangler/state',
     ports: { api: 8787, web: 8788 },
+    // groups: { 'queue-stack': ['producer', 'consumer'] },  // optional: merge into one wrangler dev
   },
   envs: [
     { name: 'production', envFile: '.env.production', suffix: '' },
@@ -597,7 +598,8 @@ export default defineConfig({
 | `outDir` | `string` | `".build"` | Directory where `wrangler.jsonc` files are generated. Resolved relative to the config file. |
 | `baseConfig` | `BaseConfig` | *(see below)* | Wrangler config fields merged into every generated `wrangler.jsonc`. |
 | `dev.persistTo` | `string` | *(none)* | Forwarded to `wrangler dev --persist-to`. Override per-run with `--persist-to`. |
-| `dev.ports` | `Record<string, number>` | *(auto)* | Fixed port assignments keyed by module short name. Unassigned modules get a free port. |
+| `dev.ports` | `Record<string, number>` | *(auto)* | Fixed primary-port assignments. Keys are either a module short name (for ungrouped workers) or a `dev.groups` group name (for merged sessions). Unassigned units get a free port. |
+| `dev.groups` | `Record<string, string[]>` | *(none)* | Co-host workers in a single `wrangler dev` process. Each entry maps a group name to an ordered list of worker short names; the first listed worker is the primary `-c`. Useful for queue producer/consumer pairs that must share one dev session. See [Merged dev sessions](#merged-dev-sessions). |
 | `envs` | `EnvConfig[]` | `[]` | Named environments for staging/production deploys. |
 
 ### Shared wrangler config (`baseConfig`)
@@ -813,10 +815,49 @@ workers-forge dev [options] [-- <wrangler args>]
 |---|---|---|
 | `--config <path>` | `workers-forge.config.ts` | Path to the config file. |
 | `--no-build` | off | Skip the build step; use existing output in `outDir`. Incompatible with `--env`. |
-| `--app <name>` | *(all)* | Run only this module and all other local workers it transitively depends on via service bindings. Repeatable: `--app api --app web`. |
+| `--app <name>` | *(all)* | Run only this module and all other local workers it transitively depends on via service bindings. Repeatable: `--app api --app web`. If the named worker belongs to a `dev.groups` group, the whole group is launched together. |
 | `--env <name>` | *(none)* | Activate a named env (requires a fresh build; incompatible with `--no-build`). |
 | `--persist-to <path>` | from config | Override `dev.persistTo` for local storage (KV, D1, R2, etc.). |
 | `-- <wrangler args>` | | Forwarded to every `wrangler dev` child. Reserved flags (`--port`, `--config`, `--name`, `--persist-to`, `--inspector-port`) are rejected — configure these via the config file. |
+
+#### Merged dev sessions
+
+By default `workers-forge dev` spawns one `wrangler dev` process per worker. Some workloads — typically Cloudflare Queue producer/consumer pairs — must share a single `wrangler dev` session so the binding resolves in-process. Declare a group under `dev.groups`:
+
+```ts
+// workers-forge.config.ts
+export default defineConfig({
+  prefix: 'qmdemo-',
+  modules: ['src/modules/*/index.ts'],
+  dev: {
+    groups: {
+      'queue-stack': ['producer', 'consumer'],
+    },
+    ports: {
+      'queue-stack': 8787,   // primary port for the merged child
+    },
+    persistTo: '.wrangler/state',
+  },
+});
+```
+
+The kit then launches one merged child for the group:
+
+```sh
+wrangler dev \
+  -c .build/producer/wrangler.jsonc \
+  -c .build/consumer/wrangler.jsonc \
+  --port 8787 \
+  --persist-to .wrangler/state
+```
+
+Rules:
+
+- Group names must not collide with any worker short name and must match `[a-z0-9-]+`.
+- The first listed worker is the primary (its config becomes the first `-c`, and `--port` applies to it).
+- A worker may belong to at most one group. Workers not listed in any group continue to spawn individually.
+- `dev.ports` keys may be group names or ungrouped worker short names. Pointing a port at a worker that lives inside a group is rejected — set the port on the group instead.
+- A working example lives under [`examples/queues-merged-dev/`](examples/queues-merged-dev/).
 
 ### deploy
 
