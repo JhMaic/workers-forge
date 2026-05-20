@@ -464,16 +464,19 @@ const profile = await this.env.USER_SERVICE.user(userId).profile();
 
 **runtime 没坏**：structured-clone 仍然能正常序列化任何实际上 JSON 安全的值。类型系统只是保守 —— 而且这种保守是对的，因为同一段代码后续可能被传入不可 clone 的值，runtime 才会爆。
 
-**解法。** 把 `unknown` 字段收窄成 JSON 安全类型。`workers-forge` 为此提供了 `RpcJson` 别名：
+**解法。** 把 `unknown` 字段收窄成 JSON 安全类型。在你自己的项目里声明一份小巧的 `RpcJson` —— 注意要把递归的数组臂和对象臂拆成 **named interface**，不要全部 inline 在一个 union alias 里。TypeScript 只对递归 **interface** 的实例化做 memoization，对递归 **type alias** 不做；叠加 `Rpc.Serializable<T>` 自身的深层递归，全 inline 写法会在某些调用点撞穿 50 层实例化上限，报 `TS2589: Type instantiation is excessively deep`：
 
 ```ts
-import type { RpcJson } from 'workers-forge';
+// 你项目里的 types.ts
+export type RpcJson = string | number | boolean | null | RpcJsonArray | RpcJsonObject;
+export interface RpcJsonArray extends ReadonlyArray<RpcJson> {}
+export interface RpcJsonObject { readonly [key: string]: RpcJson }
 
 // Drizzle schema —— 把以 JSON 形式存储的字段从 `unknown` 改成 `RpcJson`：
 payload: text('payload', { mode: 'json' }).$type<Record<string, RpcJson>>().notNull(),
 ```
 
-这是对"该列实际存的是 JSON"的精确声明，不是规避手段。链式 RPC 的类型随之恢复正常，同时 Cloudflare 的 structured-clone 保护没有被绕过。
+这是对"该列实际存的是 JSON"的精确声明，不是规避手段。链式 RPC 的类型随之恢复正常，同时 Cloudflare 的 structured-clone 保护没有被绕过。`workers-forge` 有意不导出 `RpcJson` —— 这个声明本身很小，必须用 interface 才能避开 TS2589，而且放在你自己项目里、贴近你的 JSON 数据结构时最有价值。
 
 > **不要** 去 patch 或放宽 `@cloudflare/workers-types` 里的 `Rpc.Serializable<T>`。这个守卫的存在是为了在编译期捕获 runtime 会抛 `DataCloneError` 的值 —— 绕过去会真的把 bug 藏起来。
 

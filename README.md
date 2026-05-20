@@ -464,16 +464,19 @@ If you chain a call through a service binding — e.g. `this.env.DB_SERVICE.some
 
 The runtime is **not** broken: structured-clone still serializes any actually-JSON-safe value. The type system is just being conservative — and correctly so, because the same code could later be called with a non-cloneable value and crash at runtime.
 
-**Fix.** Narrow `unknown` fields to a JSON-safe type. `workers-forge` exports an `RpcJson` alias for exactly this:
+**Fix.** Narrow `unknown` fields to a JSON-safe type. Declare a small `RpcJson` helper in your own project — split the recursive array and object arms into **named interfaces** rather than inlining them in a single union alias. TypeScript memoizes recursive interface instantiations but not recursive type alias instantiations, so an inline-only `RpcJson` combined with `Rpc.Serializable<T>`'s own deep recursion will trip `TS2589: Type instantiation is excessively deep` at some call sites:
 
 ```ts
-import type { RpcJson } from 'workers-forge';
+// local types.ts in your project
+export type RpcJson = string | number | boolean | null | RpcJsonArray | RpcJsonObject;
+export interface RpcJsonArray extends ReadonlyArray<RpcJson> {}
+export interface RpcJsonObject { readonly [key: string]: RpcJson }
 
 // Drizzle schema — declare a JSON-mode column as JSON, not `unknown`:
 payload: text('payload', { mode: 'json' }).$type<Record<string, RpcJson>>().notNull(),
 ```
 
-This is a precise statement of what the column actually holds (JSON), not a workaround. The chained RPC type then resolves correctly without disabling Cloudflare's structured-clone guarantee.
+This is a precise statement of what the column actually holds (JSON), not a workaround. The chained RPC type then resolves correctly without disabling Cloudflare's structured-clone guarantee. `workers-forge` deliberately does not export `RpcJson` itself — the declaration is tiny, must use interfaces to avoid TS2589, and is most useful when it lives next to your own JSON-shaped data.
 
 > **Do not** patch or widen `Rpc.Serializable<T>` in `@cloudflare/workers-types`. The check exists to catch values that would throw `DataCloneError` at runtime — bypassing it would hide real bugs.
 
