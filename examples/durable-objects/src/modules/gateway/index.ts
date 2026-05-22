@@ -19,11 +19,13 @@ export default defineWorker(
         return Response.json({ n: await stub.increment() });
       if (pathname === '/value')
         return Response.json({ n: await stub.value() });
+      if (pathname === '/wakes')
+        return Response.json({ wakes: await stub.wakes() });
       if (pathname === '/reset') {
         await stub.reset();
         return Response.json({ ok: true });
       }
-      return new Response('try /increment, /value, /reset', { status: 404 });
+      return new Response('try /increment, /value, /wakes, /reset', { status: 404 });
     },
   },
 );

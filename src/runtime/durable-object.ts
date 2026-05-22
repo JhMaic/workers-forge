@@ -53,10 +53,15 @@ export interface DurableObjectMeta<TBindings extends WorkerBindings = WorkerBind
 /**
  * Built-in DurableObject handler methods — excluded from the custom RPC surface
  * that `DurableObjectRPC<D>` exposes.
+ *
+ * Includes `onWake`, the framework-defined constructor hook (see
+ * `defineDurableObject`): it fires every time the DO is constructed (cold start
+ * or hibernation wake), but it is not an RPC method.
  */
 export type BuiltinDurableObjectKeys
   = | 'alarm' | 'fetch' | 'connect'
-    | 'webSocketMessage' | 'webSocketClose' | 'webSocketError';
+    | 'webSocketMessage' | 'webSocketClose' | 'webSocketError'
+    | 'onWake';
 
 export interface DefinedDurableObject<
   TBindings extends WorkerBindings = WorkerBindings,
@@ -77,15 +82,35 @@ export interface DefinedDurableObject<
  * and an entry barrel that re-exports the class under its derived PascalCase
  * name so workerd can resolve it.
  *
+ * The second argument is the class body: regular methods become RPC handlers,
+ * and the reserved key `onWake` is a constructor hook that runs every time the
+ * DO instance is constructed — that is, on cold start AND on wake from
+ * WebSocket hibernation. It is filtered from the RPC surface and from the
+ * prototype. Inside `onWake`, `this` is the new instance, so `this.ctx`,
+ * `this.env`, and your other methods are all accessible.
+ *
+ * Keep `onWake` light — it pays its cost on every wake. For async first-time
+ * initialization, call `this.ctx.blockConcurrencyWhile(async () => { ... })`
+ * inside `onWake` so concurrent requests wait for it to finish.
+ *
  * @example
  * ```ts
  * const counter = defineDurableObject(
  *   { name: 'counter' },
  *   {
+ *     onWake() {
+ *       // Pre-load the persisted count into an in-memory cache before any
+ *       // request method runs. blockConcurrencyWhile makes the async load
+ *       // gate concurrent requests so they see a populated cache.
+ *       this.ctx.blockConcurrencyWhile(async () => {
+ *         (this as any)._n = (await this.ctx.storage.get<number>('n')) ?? 0;
+ *       });
+ *     },
  *     async increment(by = 1) {
- *       const v = (await this.ctx.storage.get<number>('n')) ?? 0;
- *       await this.ctx.storage.put('n', v + by);
- *       return v + by;
+ *       const next = ((this as any)._n as number) + by;
+ *       (this as any)._n = next;
+ *       await this.ctx.storage.put('n', next);
+ *       return next;
  *     },
  *   },
  * );
@@ -105,12 +130,20 @@ export function defineDurableObject<
     & TMethods
   >,
 ): DefinedDurableObject<TBindings, TMethods> {
+  const onWake = (methods as any).onWake;
+  const hasOnWake = typeof onWake === 'function';
+
   class GeneratedDurableObject extends (DurableObject as any) {
     static [DO_META_BRAND] = true as const;
     static __meta = meta;
+    constructor(ctx: DurableObjectState, env: any) {
+      super(ctx, env);
+      if (hasOnWake) onWake.call(this);
+    }
   }
 
   for (const key of Object.getOwnPropertyNames(methods)) {
+    if (key === 'onWake') continue;
     const desc = Object.getOwnPropertyDescriptor(methods, key)!;
     if (desc.get != null) {
       Object.defineProperty(GeneratedDurableObject.prototype, key, desc);

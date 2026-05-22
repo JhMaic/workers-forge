@@ -566,6 +566,36 @@ export default defineWorker(
 
 > **Sibling 重写：** `script_name` 与 `services` 走完全相同的 `prefix`/`suffix` 重写代码路径。同项目模块自动重写为部署后的全名，外部 DO 名（不在 siblings 集合）原样透传。
 
+**构造函数钩子（`onWake`）** —— 框架自动生成 DO 类，因此你**没法直接写 `constructor`**。改用 methods 对象里的保留方法名 `onWake`：
+
+```ts
+defineDurableObject(
+  { name: 'counter' },
+  {
+    onWake() {
+      // 每次唤醒都会跑 —— 冷启动 和 从 WebSocket hibernation 唤醒 都会触发。
+      // `this` 是新实例，`this.ctx` / `this.env` / 其它方法都可用，
+      // 行为与原生 constructor 完全一致。
+      this.ctx.blockConcurrencyWhile(async () => {
+        (this as any)._n = (await this.ctx.storage.get<number>('n')) ?? 0;
+      });
+    },
+    async increment(by = 1) {
+      const next = ((this as any)._n as number) + by;
+      (this as any)._n = next;
+      await this.ctx.storage.put('n', next);
+      return next;
+    },
+  },
+);
+```
+
+- `onWake` 会被**从 RPC 表面剥离**（`DurableObjectRPC<typeof D>` 与 `fetch`/`alarm`/WebSocket handler 一起过滤掉），且**不会挂到 prototype 上**，消费侧调不到。
+- 它在**每一次唤醒**都跑，不是只跑一次。请保持轻量；若需要异步首次初始化，用 `this.ctx.blockConcurrencyWhile(...)` 包起来，让并发请求等待它完成。
+- 不需要时可以省略，构造函数就是对父类 `DurableObject` 的透传 no-op。
+
+完整端到端示例见 [`examples/durable-objects`](./examples/durable-objects)，`/wakes` 端点可观察每个实例的唤醒次数。
+
 **进阶 migrations** —— 默认只生成首次 `new_classes` / `new_sqlite_classes`。需要 rename / delete 时通过 `_raw.migrations` 覆盖：
 
 ```ts
@@ -583,7 +613,7 @@ defineDurableObject(
 );
 ```
 
-`DurableObjectRPC<typeof counter>` 抽取 DO 的公开 RPC 表面 —— 排除平台内置 handler（`alarm`、`fetch`、`connect`、`webSocketMessage`/`Close`/`Error`），保留用户方法，与 `WorkerRPC<typeof worker>` 对齐。
+`DurableObjectRPC<typeof counter>` 抽取 DO 的公开 RPC 表面 —— 排除平台内置 handler（`alarm`、`fetch`、`connect`、`webSocketMessage`/`Close`/`Error`）以及框架定义的 `onWake` 钩子，保留用户方法，与 `WorkerRPC<typeof worker>` 对齐。
 
 ---
 

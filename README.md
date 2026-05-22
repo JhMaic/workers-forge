@@ -566,6 +566,36 @@ export default defineWorker(
 
 > **Sibling rewrite:** `script_name` is rewritten with `prefix`/`suffix` exactly like `services` are — same code path. Non-sibling names (e.g. an external DO worker) pass through unchanged.
 
+**Constructor hook (`onWake`)** — the framework auto-generates the DO class for you, so there's no place to write a literal `constructor`. Instead, declare a reserved method named `onWake` in the methods object:
+
+```ts
+defineDurableObject(
+  { name: 'counter' },
+  {
+    onWake() {
+      // Runs on every wake — cold start AND wake from WebSocket hibernation.
+      // `this` is the new instance; `this.ctx`, `this.env`, and your other
+      // methods are all available, exactly like inside a real constructor.
+      this.ctx.blockConcurrencyWhile(async () => {
+        (this as any)._n = (await this.ctx.storage.get<number>('n')) ?? 0;
+      });
+    },
+    async increment(by = 1) {
+      const next = ((this as any)._n as number) + by;
+      (this as any)._n = next;
+      await this.ctx.storage.put('n', next);
+      return next;
+    },
+  },
+);
+```
+
+- `onWake` is **filtered from the RPC surface** (`DurableObjectRPC<typeof D>` strips it alongside `fetch`/`alarm`/WebSocket handlers) and is **not mounted on the prototype** — consumers can't call it.
+- It runs **on every wake**, not just once per DO ID. Keep it light. For async first-time initialization, wrap the work in `this.ctx.blockConcurrencyWhile(...)` so concurrent requests gate on it.
+- Omit `onWake` if you don't need it — the constructor becomes a no-op pass-through to the base `DurableObject`.
+
+See [`examples/durable-objects`](./examples/durable-objects) for an end-to-end demo (`/wakes` endpoint reports the per-instance wake count).
+
 **Advanced migrations** — the default migration only handles the initial `new_classes` / `new_sqlite_classes`. For rename or delete migrations, override via `_raw.migrations`:
 
 ```ts
@@ -583,7 +613,7 @@ defineDurableObject(
 );
 ```
 
-`DurableObjectRPC<typeof counter>` extracts the public RPC surface from a `defineDurableObject` instance — strips built-in handlers (`alarm`, `fetch`, `connect`, `webSocketMessage`/`Close`/`Error`) and leaves your custom methods, mirroring `WorkerRPC<typeof worker>`.
+`DurableObjectRPC<typeof counter>` extracts the public RPC surface from a `defineDurableObject` instance — strips built-in handlers (`alarm`, `fetch`, `connect`, `webSocketMessage`/`Close`/`Error`) and the framework-defined `onWake` hook, leaving your custom methods, mirroring `WorkerRPC<typeof worker>`.
 
 ---
 
