@@ -9,6 +9,13 @@ declare global {
   }
 }
 
+// Note: pool-workers marks `SELF` as @deprecated and suggests
+// `import { exports } from 'cloudflare:workers'` + `exports.default.fetch()`.
+// We keep `SELF` because the alternative needs a project-specific
+// `Cloudflare.GlobalProps.mainModule` declaration that conflicts when several
+// vitest projects coexist under one tsconfig (gateway vs counter here). The
+// deprecation hint is informational — `SELF` still works.
+
 describe('gateway worker', () => {
   afterEach(async () => {
     // Persisted DO state survives across tests by default — reset the counter
