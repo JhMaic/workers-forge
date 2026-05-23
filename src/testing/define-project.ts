@@ -31,6 +31,52 @@ export interface DefineVitestProjectOptions {
    * `wrangler`. Resolved from the user's CWD.
    */
   wranglerModule?: string;
+  /**
+   * Extra miniflare options merged (shallow, top-level only) on top of the
+   * kit-managed `workers` (aux discovery) and `durableObjects` (self-binding)
+   * entries before being handed to `cloudflareTest`. Use this for test-only
+   * bindings, env vars, or per-namespace storage IDs.
+   *
+   * Common keys: `bindings`, `d1Databases`, `kvNamespaces`, `r2Buckets`,
+   * `queueProducers`, `serviceBindings`, `compatibilityDate`,
+   * `compatibilityFlags`. The exact shape matches
+   * `cloudflareTest`'s `miniflare` option.
+   *
+   * Cross-worker storage sharing: miniflare keys D1/KV/R2 instances by their
+   * id string. To share a D1 between primary and an aux, set
+   * `miniflare.d1Databases.<BINDING>` to the id that already appears in the
+   * aux's wrangler.jsonc — both workers connect to the same instance.
+   *
+   * Throws if `workers` or `durableObjects` are passed: those are managed by
+   * workers-forge and would overwrite auto-discovered siblings or the DO
+   * self-binding.
+   */
+  miniflare?: Record<string, unknown>;
+}
+
+const KIT_MANAGED_MINIFLARE_KEYS = ['workers', 'durableObjects'] as const;
+
+/**
+ * Shallow-merge a user-supplied miniflare options object on top of the
+ * kit-managed object. Throws if the user supplies any key listed in
+ * {@link KIT_MANAGED_MINIFLARE_KEYS}. Exported for unit testing — not part of
+ * the package's public surface (not re-exported from `testing/index.ts`).
+ */
+export function mergeUserMiniflareOptions(
+  kit: Record<string, unknown>,
+  user: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!user) return { ...kit };
+  for (const k of KIT_MANAGED_MINIFLARE_KEYS) {
+    if (k in user) {
+      throw new Error(
+        `[workers-forge/testing] \`miniflare.${k}\` is managed by workers-forge `
+        + `and cannot be passed in \`defineVitestProject({ miniflare })\`. `
+        + `Remove it from your config.`,
+      );
+    }
+  }
+  return { ...kit, ...user };
 }
 
 /**
@@ -126,12 +172,13 @@ export async function defineVitestProject(opts: DefineVitestProjectOptions): Pro
     });
   }
 
-  const miniflare: Record<string, unknown> = {};
-  if (auxWorkers.length > 0) miniflare.workers = auxWorkers;
+  const kitMiniflare: Record<string, unknown> = {};
+  if (auxWorkers.length > 0) kitMiniflare.workers = auxWorkers;
   if (descriptor.selfDurableObjectBinding) {
     const { binding, className } = descriptor.selfDurableObjectBinding;
-    miniflare.durableObjects = { [binding]: className };
+    kitMiniflare.durableObjects = { [binding]: className };
   }
+  const miniflare = mergeUserMiniflareOptions(kitMiniflare, opts.miniflare);
 
   const poolModule = opts.poolModule ?? '@cloudflare/vitest-pool-workers';
   const mod = await loadPackageFromCwd(poolModule) as { cloudflareTest?: (o: unknown) => unknown };
