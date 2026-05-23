@@ -8,12 +8,16 @@
     "dev:stage": "workers-forge dev --env stage",
     "deploy:stage": "workers-forge deploy --build --env stage",
     "build": "workers-forge build --env local",
-    "build:api": "workers-forge build --env local --app api-worker"
+    "build:api": "workers-forge build --env local --app api-worker",
+    "test": "workers-forge build --env local && vitest run",
+    "test:watch": "workers-forge build --env local && vitest"
   },
   "devDependencies": {
-    "workers-forge": "latest",
-    "wrangler": "^4",
+    "@cloudflare/vitest-pool-workers": "^0.16.9",
+    "hono": "^4",
     "tsx": "^4",
-    "hono": "^4"
+    "vitest": "^4.1.7",
+    "workers-forge": "latest",
+    "wrangler": "^4"
   }
 }
