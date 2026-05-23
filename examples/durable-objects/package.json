@@ -6,10 +6,14 @@
   "scripts": {
     "dev": "workers-forge dev --env local",
     "build": "workers-forge build --env local",
-    "deploy:stage": "workers-forge deploy --build --env stage"
+    "deploy:stage": "workers-forge deploy --build --env stage",
+    "test": "workers-forge build --env local && vitest run",
+    "test:watch": "workers-forge build --env local && vitest"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.16.9",
     "tsx": "^4.22.3",
+    "vitest": "^4.1.7",
     "workers-forge": "latest",
     "wrangler": "^4.93.0"
   }
