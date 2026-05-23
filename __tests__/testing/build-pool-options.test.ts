@@ -137,4 +137,101 @@ describe('buildPoolOptions', () => {
 
     expect(d.siblings).toEqual([]);
   });
+
+  it('discovers transitive siblings via service bindings (A → B → C)', async () => {
+    await writeWranglerConfig(join(outDir, 'gateway'), {
+      name: 'pfx-gateway',
+      main: 'gateway.ts',
+      services: [{ binding: 'SVC', service: 'pfx-service' }],
+    });
+    await writeWranglerConfig(join(outDir, 'service'), {
+      name: 'pfx-service',
+      main: 'service.ts',
+      services: [{ binding: 'REPO', service: 'pfx-repo' }],
+    });
+    await writeWranglerConfig(join(outDir, 'repo'), {
+      name: 'pfx-repo',
+      main: 'repo.ts',
+    });
+
+    const d = await buildPoolOptions({ outDir, worker: 'gateway' });
+
+    const deployedNames = d.siblings.map(s => s.deployedName).sort();
+    expect(deployedNames).toEqual(['pfx-repo', 'pfx-service']);
+  });
+
+  it('discovers transitive DO siblings when an aux DO references another DO', async () => {
+    // Mirrors the reported topology:
+    //   webhook-line (main) → friend-do (DO, aux) → scheduler-do (DO, 2-hop)
+    await writeWranglerConfig(join(outDir, 'webhook-line'), {
+      name: 'linehub-webhook-line-local',
+      main: 'webhook.ts',
+      durable_objects: {
+        bindings: [{ name: 'FRIEND_DO', class_name: 'FriendDo', script_name: 'linehub-friend-do-local' }],
+      },
+    });
+    await writeWranglerConfig(join(outDir, 'friend-do'), {
+      name: 'linehub-friend-do-local',
+      main: 'friend.ts',
+      migrations: [{ tag: 'v1', new_sqlite_classes: ['FriendDo'] }],
+      durable_objects: {
+        bindings: [
+          { name: 'SCHEDULER_DO', class_name: 'SchedulerDo', script_name: 'linehub-scheduler-do-local' },
+        ],
+      },
+    });
+    await writeWranglerConfig(join(outDir, 'scheduler-do'), {
+      name: 'linehub-scheduler-do-local',
+      main: 'scheduler.ts',
+      migrations: [{ tag: 'v1', new_sqlite_classes: ['SchedulerDo'] }],
+    });
+
+    const d = await buildPoolOptions({ outDir, worker: 'webhook-line' });
+
+    const deployedNames = d.siblings.map(s => s.deployedName).sort();
+    expect(deployedNames).toEqual(['linehub-friend-do-local', 'linehub-scheduler-do-local']);
+  });
+
+  it('terminates on cycles between aux workers', async () => {
+    // main → A → B → A (cycle between siblings)
+    await writeWranglerConfig(join(outDir, 'main'), {
+      name: 'pfx-main',
+      main: 'main.ts',
+      services: [{ binding: 'A', service: 'pfx-a' }],
+    });
+    await writeWranglerConfig(join(outDir, 'a'), {
+      name: 'pfx-a',
+      main: 'a.ts',
+      services: [{ binding: 'B', service: 'pfx-b' }],
+    });
+    await writeWranglerConfig(join(outDir, 'b'), {
+      name: 'pfx-b',
+      main: 'b.ts',
+      services: [{ binding: 'A', service: 'pfx-a' }],
+    });
+
+    const d = await buildPoolOptions({ outDir, worker: 'main' });
+
+    const deployedNames = d.siblings.map(s => s.deployedName).sort();
+    expect(deployedNames).toEqual(['pfx-a', 'pfx-b']);
+  });
+
+  it('does not re-add the worker under test when an aux references it back', async () => {
+    // main → A → main (sibling back-references the worker under test)
+    await writeWranglerConfig(join(outDir, 'main'), {
+      name: 'pfx-main',
+      main: 'main.ts',
+      services: [{ binding: 'A', service: 'pfx-a' }],
+    });
+    await writeWranglerConfig(join(outDir, 'a'), {
+      name: 'pfx-a',
+      main: 'a.ts',
+      services: [{ binding: 'MAIN', service: 'pfx-main' }],
+    });
+
+    const d = await buildPoolOptions({ outDir, worker: 'main' });
+
+    const deployedNames = d.siblings.map(s => s.deployedName).sort();
+    expect(deployedNames).toEqual(['pfx-a']);
+  });
 });

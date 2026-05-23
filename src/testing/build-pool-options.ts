@@ -71,15 +71,27 @@ export async function buildPoolOptions(args: BuildPoolOptionsArgs): Promise<Pool
   for (const [short, cfg] of siblingConfigs)
     deployedToShort.set(cfg.name, short);
 
+  // BFS from the worker under test through service + DO `script_name` bindings
+  // so transitive references (aux → aux, e.g. two DOs that reference each
+  // other) get registered as miniflare aux workers too. Without this, miniflare
+  // boots a sibling whose own bindings point at unregistered services and
+  // fails with `no such service is defined`.
   const referencedSiblings = new Set<string>();
-  for (const s of mainCfg.services ?? []) {
-    const short = deployedToShort.get(s.service);
-    if (short !== undefined && short !== worker) referencedSiblings.add(short);
-  }
-  for (const d of mainCfg.durable_objects?.bindings ?? []) {
-    if (!d.script_name) continue;
-    const short = deployedToShort.get(d.script_name);
-    if (short !== undefined && short !== worker) referencedSiblings.add(short);
+  const queue: string[] = [worker];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    const cfg = siblingConfigs.get(cur);
+    if (!cfg) continue;
+    const enqueue = (deployedName: string | undefined): void => {
+      if (deployedName === undefined) return;
+      const short = deployedToShort.get(deployedName);
+      if (short === undefined || short === worker) return;
+      if (referencedSiblings.has(short)) return;
+      referencedSiblings.add(short);
+      queue.push(short);
+    };
+    for (const s of cfg.services ?? []) enqueue(s.service);
+    for (const d of cfg.durable_objects?.bindings ?? []) enqueue(d.script_name);
   }
 
   const siblings = [...referencedSiblings].map(s => ({
