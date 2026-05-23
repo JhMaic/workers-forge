@@ -6,10 +6,14 @@
   "scripts": {
     "dev": "workers-forge dev",
     "build": "workers-forge build",
-    "deploy": "workers-forge deploy --build"
+    "deploy": "workers-forge deploy --build",
+    "test": "workers-forge build && vitest run",
+    "test:watch": "workers-forge build && vitest"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.16.9",
     "tsx": "^4.22.3",
+    "vitest": "^4.1.7",
     "workers-forge": "latest",
     "wrangler": "^4.93.0"
   }
