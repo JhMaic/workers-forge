@@ -62,7 +62,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup && tsc --project tsconfig.build.json",
+    "build": "tsup && tsc --project tsconfig.build.json && node scripts/inject-testing-ambient.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -93,6 +93,7 @@
     "globby": "^14.0.0"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.16.9",
     "@cloudflare/workers-types": "^4.20250410.0",
     "@types/node": "^25.5.2",
     "hono": "^4",

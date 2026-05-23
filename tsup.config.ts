@@ -25,5 +25,10 @@ export default defineConfig({
       'src/build/internal/loader.mjs',
       'dist/internal/loader.mjs',
     );
+    // `dist/testing/index.d.ts` is emitted by `tsc --project tsconfig.build.json`
+    // AFTER tsup finishes. The build script runs `tsup && tsc ...` so we can't
+    // post-process here — tsup's onSuccess fires before tsc emits. The d.ts
+    // post-process step lives in `scripts/inject-testing-ambient.mjs` and is
+    // invoked after tsc in the npm `build` script.
   },
 });
