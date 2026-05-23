@@ -41,6 +41,7 @@
   - [deploy](#deploy)
   - [gen](#gen)
 - [构建输出](#构建输出)
+- [测试](#测试)
 - [子路径导出](#子路径导出)
 - [示例](#示例)
 - [开发](#开发)
@@ -984,6 +985,105 @@ workers-forge gen <metaFile> [options]
 
 ---
 
+## 测试
+
+`workers-forge/testing` 将工具按 Worker 生成的 `wrangler.jsonc` 接入 [`@cloudflare/vitest-pool-workers`](https://github.com/cloudflare/workers-sdk/tree/main/packages/vitest-pool-workers)，让测试在真实的 workerd 运行时中运行。
+
+### 准备
+
+```sh
+npm install --save-dev @cloudflare/vitest-pool-workers vitest
+```
+
+```ts
+// vitest.config.ts
+import { defineConfig } from 'vitest/config';
+import { defineVitestProject } from 'workers-forge/testing';
+
+const gateway = await defineVitestProject({ worker: 'gateway' });
+
+export default defineConfig({
+  test: {
+    projects: [
+      {
+        ...gateway,
+        test: {
+          ...(gateway.test as Record<string, unknown> | undefined),
+          name: 'gateway',
+          include: ['src/modules/gateway/__tests__/**/*.test.ts'],
+        },
+      },
+    ],
+  },
+});
+```
+
+```jsonc
+// package.json
+{
+  "scripts": {
+    "test": "workers-forge build && vitest run",
+    "test:watch": "workers-forge build && vitest"
+  }
+}
+```
+
+`defineVitestProject` 读取 `<outDir>/<worker>/wrangler.jsonc` 并把它作为主 Worker 喂给 pool-workers。被 service binding 或 Durable Object `script_name` 引用的 sibling Worker 会自动以 esbuild 打包后的 inline ESModule 注册为 miniflare 辅助 Worker，从而让跨 Worker 调用在同一进程内解析。当测试目标是 DO 宿主脚本时，helper 会自动注入一个 self-binding，测试就可以通过 `env.<CLASS>.get(...)` 拿到 stub。
+
+### 编写测试
+
+```ts
+// src/modules/gateway/__tests__/gateway.test.ts
+import { SELF } from 'cloudflare:test';
+import { describe, expect, it } from 'vitest';
+import gateway from '..';
+import type { WorkerEnv } from 'workers-forge/testing';
+
+declare global {
+  namespace Cloudflare {
+    interface Env extends WorkerEnv<typeof gateway> {}
+  }
+}
+
+it('经由 COUNTER DO 转发请求', async () => {
+  const res = await SELF.fetch('https://x/increment');
+  expect(await res.json()).toEqual({ n: 1 });
+});
+```
+
+测试 Durable Object 时，用 `DurableObjectTestEnv<typeof counter, 'COUNTER'>` 声明 self-binding 的类型：
+
+```ts
+import { env } from 'cloudflare:test';
+import counter from '..';
+import type { DurableObjectTestEnv } from 'workers-forge/testing';
+
+declare global {
+  namespace Cloudflare {
+    interface Env extends DurableObjectTestEnv<typeof counter, 'COUNTER'> {}
+  }
+}
+
+const stub = env.COUNTER.get(env.COUNTER.idFromName('t1'));
+expect(await stub.increment()).toBe(1);
+```
+
+`cloudflare:test` 的 ambient 模块声明由 `workers-forge/testing` 自动加载 —— 用户不需要写 `env.d.ts`、也不用配置 `compilerOptions.types`。
+
+### 导出
+
+| 符号 | 用途 |
+|---|---|
+| `defineVitestProject({ worker, outDir?, test?, ... })` | 为一个已构建的 Worker 合成 vitest project 配置。 |
+| `WorkerEnv<W>` | 扩展 `Cloudflare.Env`，对应 `defineWorker` 目标。 |
+| `DurableObjectTestEnv<D, K>` | 扩展 `Cloudflare.Env`，加入名为 `K` 的 DO self-binding。 |
+
+### 更多参考
+
+[`examples/`](./examples) 下每个示例都带 `npm test`。覆盖的模式：跨 Worker RPC、Durable Object（含 `onWake`）、Hono 路由、队列生产/消费。
+
+---
+
 ## 子路径导出
 
 | 子路径 | 导入来源 | 提供内容 |
@@ -991,8 +1091,9 @@ workers-forge gen <metaFile> [options]
 | `workers-forge` | Worker 源文件 / app meta 文件 | `defineWorker`、`defineWorkerMeta`、`service`、`envs`、`WorkerRPC`、`InferEnv`、`WorkerBindings`… |
 | `workers-forge/hono` | Worker 源文件（Hono） | `defineHonoWorker`、`InferHonoEnv` |
 | `workers-forge/build` | `workers-forge.config.ts`、Node 脚本 | `defineConfig`、`build`、`dev`、`deploy`、`gen`、`KitConfig`、`BaseConfig`… |
+| `workers-forge/testing` | `vitest.config.ts`、测试文件 | `defineVitestProject`、`WorkerEnv`、`DurableObjectTestEnv` |
 
-> **重要：** Worker 源文件只能从 `.` 和 `./hono` 导入。`./build` 子路径导入了 Node 内置模块（`node:fs`、`node:module`、`globby`），这些模块在 Cloudflare Workers 运行时中不可用，会导致 bundle 出错。
+> **重要：** Worker 源文件只能从 `.` 和 `./hono` 导入。`./build` 和 `./testing` 子路径导入了 Node 内置模块（`node:fs`、`node:module`、`globby`），这些模块在 Cloudflare Workers 运行时中不可用，会导致 bundle 出错。
 
 ---
 
@@ -1004,6 +1105,8 @@ workers-forge gen <metaFile> [options]
 |---------|-------------|
 | [`rpc-multi-env`](./examples/rpc-multi-env) | KV → data-worker --RPC--> api-worker，支持 `local`/`stage` 环境隔离 |
 | [`rpc-multi-env-hono`](./examples/rpc-multi-env-hono) | 同上，但 `api-worker` 使用 Hono 适配器（`defineHonoWorker`）；Worker 以扁平文件方式定义在 `src/` 下 |
+| [`durable-objects`](./examples/durable-objects) | gateway Worker 跨调到 sibling DO 模块（`Counter`），包含 `onWake` 生命周期；完整的 vitest-pool-workers 测试套件 |
+| [`queues-merged-dev`](./examples/queues-merged-dev) | 队列生产者 + 消费者通过 `dev.groups` 在同一个 `wrangler dev` 进程内共托管；队列处理函数通过 `createMessageBatch` + 直接调用原型方法测试 |
 | [`monorepo-opennext`](./examples/monorepo-opennext) | pnpm monorepo：一个 Workers 包加一个 Next.js 16（`@opennextjs/cloudflare`）包共享同一份配置。Next.js 侧把 `workers-forge gen` 纯当作 `wrangler.jsonc` 生成器使用，并通过类型化 RPC 调用 sibling Worker。 |
 
 每个示例都是独立的项目，包含自己的 `package.json` 和 `README.md`。

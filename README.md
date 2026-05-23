@@ -41,6 +41,7 @@ Declare your workers and bindings once in TypeScript — the kit generates `wran
   - [deploy](#deploy)
   - [gen](#gen)
 - [Build Output](#build-output)
+- [Testing](#testing)
 - [Subpath Exports](#subpath-exports)
 - [Examples](#examples)
 - [Development](#development)
@@ -984,6 +985,105 @@ Each `wrangler.jsonc` is a complete, standalone config with:
 
 ---
 
+## Testing
+
+`workers-forge/testing` wires the kit's per-worker `wrangler.jsonc` output into [`@cloudflare/vitest-pool-workers`](https://github.com/cloudflare/workers-sdk/tree/main/packages/vitest-pool-workers), so tests run inside the real workerd runtime.
+
+### Setup
+
+```sh
+npm install --save-dev @cloudflare/vitest-pool-workers vitest
+```
+
+```ts
+// vitest.config.ts
+import { defineConfig } from 'vitest/config';
+import { defineVitestProject } from 'workers-forge/testing';
+
+const gateway = await defineVitestProject({ worker: 'gateway' });
+
+export default defineConfig({
+  test: {
+    projects: [
+      {
+        ...gateway,
+        test: {
+          ...(gateway.test as Record<string, unknown> | undefined),
+          name: 'gateway',
+          include: ['src/modules/gateway/__tests__/**/*.test.ts'],
+        },
+      },
+    ],
+  },
+});
+```
+
+```jsonc
+// package.json
+{
+  "scripts": {
+    "test": "workers-forge build && vitest run",
+    "test:watch": "workers-forge build && vitest"
+  }
+}
+```
+
+`defineVitestProject` reads `<outDir>/<worker>/wrangler.jsonc` and feeds it to pool-workers as the main worker. Every sibling worker referenced via a service binding or Durable Object `script_name` is auto-registered as an auxiliary miniflare worker (with TS bundled by esbuild) so cross-worker calls resolve in-process. When the target is a DO host script, a self-binding is injected so the test can call `env.<CLASS>.get(...)`.
+
+### Writing tests
+
+```ts
+// src/modules/gateway/__tests__/gateway.test.ts
+import { SELF } from 'cloudflare:test';
+import { describe, expect, it } from 'vitest';
+import gateway from '..';
+import type { WorkerEnv } from 'workers-forge/testing';
+
+declare global {
+  namespace Cloudflare {
+    interface Env extends WorkerEnv<typeof gateway> {}
+  }
+}
+
+it('forwards through COUNTER DO', async () => {
+  const res = await SELF.fetch('https://x/increment');
+  expect(await res.json()).toEqual({ n: 1 });
+});
+```
+
+For a Durable Object module, type the self-binding via `DurableObjectTestEnv<typeof counter, 'COUNTER'>`:
+
+```ts
+import { env } from 'cloudflare:test';
+import counter from '..';
+import type { DurableObjectTestEnv } from 'workers-forge/testing';
+
+declare global {
+  namespace Cloudflare {
+    interface Env extends DurableObjectTestEnv<typeof counter, 'COUNTER'> {}
+  }
+}
+
+const stub = env.COUNTER.get(env.COUNTER.idFromName('t1'));
+expect(await stub.increment()).toBe(1);
+```
+
+`cloudflare:test`'s ambient module declaration is loaded automatically via `workers-forge/testing` — no `env.d.ts` or `compilerOptions.types` entry required.
+
+### Exports
+
+| Symbol | Purpose |
+|---|---|
+| `defineVitestProject({ worker, outDir?, test?, ... })` | Synthesize a vitest project config for a built worker. |
+| `WorkerEnv<W>` | Augment `Cloudflare.Env` for a `defineWorker` target. |
+| `DurableObjectTestEnv<D, K>` | Augment `Cloudflare.Env` with a DO self-binding named `K`. |
+
+### Further reading
+
+Every example under [`examples/`](./examples) ships an `npm test` setup. Patterns covered: cross-worker RPC, Durable Objects (with `onWake`), Hono routers, queue producer/consumer.
+
+---
+
 ## Subpath Exports
 
 | Subpath | Import from | What it provides |
@@ -991,8 +1091,9 @@ Each `wrangler.jsonc` is a complete, standalone config with:
 | `workers-forge` | Worker source files / app meta files | `defineWorker`, `defineWorkerMeta`, `service`, `envs`, `WorkerRPC`, `InferEnv`, `WorkerBindings`, … |
 | `workers-forge/hono` | Worker source files (Hono) | `defineHonoWorker`, `InferHonoEnv` |
 | `workers-forge/build` | `workers-forge.config.ts`, Node scripts | `defineConfig`, `build`, `dev`, `deploy`, `gen`, `KitConfig`, `BaseConfig`, … |
+| `workers-forge/testing` | `vitest.config.ts`, test files | `defineVitestProject`, `WorkerEnv`, `DurableObjectTestEnv` |
 
-> **Important:** Worker source files must only import from `.` and `./hono`. The `./build` subpath imports Node built-ins (`node:fs`, `node:module`, `globby`) that are not available in the Cloudflare Workers runtime and would break your bundle.
+> **Important:** Worker source files must only import from `.` and `./hono`. The `./build` and `./testing` subpaths import Node built-ins (`node:fs`, `node:module`, `globby`) that are not available in the Cloudflare Workers runtime and would break your bundle.
 
 ---
 
@@ -1004,6 +1105,8 @@ Ready-to-run examples are in the [`examples/`](./examples) directory.
 |---------|-------------|
 | [`rpc-multi-env`](./examples/rpc-multi-env) | KV → data-worker --RPC--> api-worker with `local`/`stage` env isolation |
 | [`rpc-multi-env-hono`](./examples/rpc-multi-env-hono) | Same as above but `api-worker` uses the Hono adapter (`defineHonoWorker`); workers defined as flat files in `src/` |
+| [`durable-objects`](./examples/durable-objects) | gateway worker calling into a sibling DO module (`Counter`) with `onWake` lifecycle; full vitest-pool-workers test suite |
+| [`queues-merged-dev`](./examples/queues-merged-dev) | Queue producer + consumer co-hosted in one `wrangler dev` process via `dev.groups`; queue handler tested via `createMessageBatch` + direct prototype invocation |
 | [`monorepo-opennext`](./examples/monorepo-opennext) | pnpm monorepo: a Workers package + a Next.js 16 (`@opennextjs/cloudflare`) package sharing one config. The Next.js side uses `workers-forge gen` purely as a `wrangler.jsonc` generator and calls into a sibling Worker via typed RPC. |
 
 Each example is a self-contained project with its own `package.json` and `README.md`.
