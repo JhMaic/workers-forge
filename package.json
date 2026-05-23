@@ -39,6 +39,10 @@
       "types": "./dist/hono.d.ts",
       "import": "./dist/hono.js"
     },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    },
     "./tsconfig": "./tsconfig/worker.json"
   },
   "main": "./dist/index.js",
@@ -61,15 +65,23 @@
     "prepublishOnly": "npm run build && npm test"
   },
   "peerDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.16.0",
     "@cloudflare/workers-types": "^4",
     "@types/node": ">=20",
     "hono": "^4",
     "tsx": "^4",
     "typescript": "^6",
+    "vitest": "^4.1.0",
     "wrangler": "^4"
   },
   "peerDependenciesMeta": {
+    "@cloudflare/vitest-pool-workers": {
+      "optional": true
+    },
     "hono": {
+      "optional": true
+    },
+    "vitest": {
       "optional": true
     }
   },

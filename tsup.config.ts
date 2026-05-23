@@ -7,13 +7,14 @@ export default defineConfig({
     'hono': 'src/hono.ts',
     'build/index': 'src/build/index.ts',
     'cli/index': 'src/cli/index.ts',
+    'testing/index': 'src/testing/index.ts',
   },
   format: 'esm',
   dts: false,
   clean: true,
   outDir: 'dist',
   // node_modules are automatically external; list explicit external packages
-  external: ['wrangler', 'hono', 'tsx', 'globby', /^cloudflare:/],
+  external: ['wrangler', 'hono', 'tsx', 'globby', '@cloudflare/vitest-pool-workers', /^cloudflare:/],
   async onSuccess() {
     // loader.mjs is a plain-JS Node module loader hook referenced by path at
     // runtime. Copy it alongside the compiled build output so that the bundled
