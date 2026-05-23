@@ -1,21 +1,20 @@
-import type { KitConfig } from '../build/config';
-import { isAbsolute, resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, isAbsolute, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { buildPoolOptions } from './build-pool-options';
 
 export interface DefineVitestProjectOptions {
   /**
-   * The project's `workers-forge.config.ts` default export. Used only to
-   * resolve `outDir` (and its `cwd`); env / prefix are inferred from the
-   * already-built wrangler.jsonc files.
-   */
-  kitConfig: KitConfig;
-  /**
    * Short name (`meta.name`) of the worker under test. Matches the directory
-   * under `<outDir>/`. If omitted, the helper auto-detects from the location
-   * of the importing `vitest.config.ts`: if the file lives under a directory
-   * whose basename matches a built worker, that worker is used.
+   * the kit writes its `wrangler.jsonc` into under `outDir`.
    */
-  worker?: string;
+  worker: string;
+  /**
+   * Directory containing the kit's generated `<worker>/wrangler.jsonc` files.
+   * Defaults to `.build` relative to `process.cwd()` — matching
+   * `workers-forge build`'s default output. Absolute paths are honored as-is.
+   */
+  outDir?: string;
   /**
    * Extra options forwarded verbatim to vitest's `test` block (e.g. `setupFiles`,
    * `globals`). Use this for vitest-level config the kit can't infer.
@@ -27,6 +26,11 @@ export interface DefineVitestProjectOptions {
    * plugin under a different specifier.
    */
   poolModule?: string;
+  /**
+   * Optional override for the path to import wrangler from. Defaults to
+   * `wrangler`. Resolved from the user's CWD.
+   */
+  wranglerModule?: string;
 }
 
 /**
@@ -34,15 +38,15 @@ export interface DefineVitestProjectOptions {
  * `@cloudflare/vitest-pool-workers`, wired to the kit's already-built
  * `<outDir>/<worker>/wrangler.jsonc`. Sibling workers referenced via service
  * bindings or Durable Object `script_name` are auto-registered as auxiliary
- * miniflare workers so cross-worker calls resolve in-process.
+ * miniflare workers (via `wrangler.unstable_getMiniflareWorkerOptions`) so
+ * cross-worker calls resolve in-process and TS sources are bundled.
  *
  * Usage:
  * ```ts
  * // vitest.config.ts
  * import { defineVitestProject } from 'workers-forge/testing';
- * import kitConfig from './workers-forge.config';
  *
- * export default defineVitestProject({ kitConfig, worker: 'gateway' });
+ * export default await defineVitestProject({ worker: 'gateway' });
  * ```
  *
  * Prerequisites: the user must run `workers-forge build` (with `--env <name>`
@@ -50,23 +54,87 @@ export interface DefineVitestProjectOptions {
  * generated wrangler.jsonc files; it does not call `build()` itself.
  */
 export async function defineVitestProject(opts: DefineVitestProjectOptions): Promise<Record<string, unknown>> {
-  const cwd = resolve(opts.kitConfig.cwd ?? process.cwd());
-  const outDir = isAbsolute(opts.kitConfig.outDir ?? '')
-    ? opts.kitConfig.outDir!
-    : resolve(cwd, opts.kitConfig.outDir ?? '.build');
+  const outDir = opts.outDir
+    ? (isAbsolute(opts.outDir) ? opts.outDir : resolve(process.cwd(), opts.outDir))
+    : resolve(process.cwd(), '.build');
 
-  const worker = opts.worker ?? inferWorkerFromCwd(outDir);
-  if (!worker) {
+  const descriptor = await buildPoolOptions({ outDir, worker: opts.worker });
+
+  // Resolve wrangler from the user's CWD so we don't pin the kit's own dev
+  // dependency tree (especially under symlinked dist during local development).
+  const wranglerSpec = opts.wranglerModule ?? 'wrangler';
+  const wrangler = await loadPackageFromCwd(wranglerSpec) as {
+    unstable_getMiniflareWorkerOptions?: (
+      configPath: string,
+      env?: string,
+      options?: unknown,
+    ) => { workerOptions: Record<string, unknown>; main?: string };
+  };
+  const getMfOptions = wrangler.unstable_getMiniflareWorkerOptions;
+  if (typeof getMfOptions !== 'function') {
     throw new Error(
-      `[workers-forge/testing] Could not infer "worker" — pass it explicitly via `
-      + `defineVitestProject({ worker: '<short-name>' }).`,
+      `[workers-forge/testing] wrangler@${wranglerSpec} does not export `
+      + `\`unstable_getMiniflareWorkerOptions\`. Upgrade wrangler to >= 4.0.`,
     );
   }
 
-  const poolOptions = await buildPoolOptions({ outDir, worker });
+  // Aux workers are loaded directly by miniflare (no Vite/wrangler transform),
+  // so TS sources must be pre-bundled. We use esbuild — available transitively
+  // through `wrangler` in every workers project — to produce a single ESM
+  // string per sibling and hand it to miniflare via the `script` option.
+  let esbuild: { build: (opts: unknown) => Promise<{ outputFiles?: { text: string }[] }> } | undefined;
+  if (descriptor.siblings.length > 0) {
+    esbuild = await loadPackageFromCwd('esbuild') as typeof esbuild;
+  }
+
+  const auxWorkers: Record<string, unknown>[] = [];
+  for (const sib of descriptor.siblings) {
+    const { workerOptions, main } = getMfOptions(sib.configPath);
+    const sibDir = dirname(sib.configPath);
+    if (!main) {
+      throw new Error(
+        `[workers-forge/testing] Sibling ${sib.deployedName} has no \`main\` in its wrangler config.`,
+      );
+    }
+    const entryPath = resolve(sibDir, main);
+    const result = await esbuild!.build({
+      entryPoints: [entryPath],
+      bundle: true,
+      format: 'esm',
+      platform: 'neutral',
+      target: 'es2022',
+      // Workers runtime built-ins — must remain unbundled.
+      external: ['cloudflare:*', 'node:*'],
+      write: false,
+      // workerd rejects paths that escape `modulesRoot`; the sourceMappingURL
+      // comment esbuild emits ends up containing `..` which trips that check.
+      sourcemap: false,
+      logLevel: 'silent',
+    });
+    const text = result.outputFiles?.[0]?.text;
+    if (!text) {
+      throw new Error(
+        `[workers-forge/testing] Failed to bundle sibling ${sib.deployedName}: esbuild produced no output.`,
+      );
+    }
+    auxWorkers.push({
+      ...workerOptions,
+      name: sib.deployedName,
+      modules: [
+        { type: 'ESModule', path: 'entry.mjs', contents: text },
+      ],
+    });
+  }
+
+  const miniflare: Record<string, unknown> = {};
+  if (auxWorkers.length > 0) miniflare.workers = auxWorkers;
+  if (descriptor.selfDurableObjectBinding) {
+    const { binding, className } = descriptor.selfDurableObjectBinding;
+    miniflare.durableObjects = { [binding]: className };
+  }
 
   const poolModule = opts.poolModule ?? '@cloudflare/vitest-pool-workers';
-  const mod = await import(poolModule) as { cloudflareTest?: (o: unknown) => unknown };
+  const mod = await loadPackageFromCwd(poolModule) as { cloudflareTest?: (o: unknown) => unknown };
   const cloudflareTest = mod.cloudflareTest;
   if (typeof cloudflareTest !== 'function') {
     throw new Error(
@@ -76,21 +144,70 @@ export async function defineVitestProject(opts: DefineVitestProjectOptions): Pro
   }
 
   return {
-    plugins: [cloudflareTest(poolOptions)],
+    plugins: [cloudflareTest({
+      wrangler: { configPath: descriptor.mainConfigPath },
+      miniflare: Object.keys(miniflare).length > 0 ? miniflare : undefined,
+    })],
     test: opts.test ?? {},
   };
 }
 
+async function loadPackageFromCwd(name: string): Promise<unknown> {
+  const url = resolvePackageFrom(name, process.cwd());
+  if (!url) {
+    throw new Error(
+      `[workers-forge/testing] Could not resolve "${name}" from ${process.cwd()}. `
+      + `Make sure it is installed as a devDependency in your project.`,
+    );
+  }
+  return await import(url);
+}
+
 /**
- * Best-effort: if `vitest.config.ts` lives under `src/modules/<name>/...`,
- * return `<name>`. Returns undefined if the heuristic doesn't match — the
- * caller will then surface a clear error.
+ * Walk up the directory tree from `fromDir` looking for
+ * `node_modules/<name>/package.json`. Returns the resolved entry file URL for
+ * the `"."` export (preferring `import` over `default`/`main`), or null if the
+ * package can't be found.
  */
-function inferWorkerFromCwd(_outDir: string): string | undefined {
-  // Reserved for a future heuristic. We could scan up from process.cwd() for
-  // a parent dir whose basename matches a built worker, but `process.cwd()`
-  // when vitest loads a config is the project root, so this rarely helps.
-  // Leave undefined here and require explicit `worker` until a clean signal
-  // emerges (e.g. the test file path during config evaluation).
-  return undefined;
+function resolvePackageFrom(name: string, fromDir: string): string | null {
+  let dir = resolve(fromDir);
+  while (true) {
+    const pkgDir = resolve(dir, 'node_modules', name);
+    const pkgJson = resolve(pkgDir, 'package.json');
+    if (existsSync(pkgJson)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgJson, 'utf-8')) as PackageJson;
+        const entry = resolveEntry(pkg);
+        if (entry) return pathToFileURL(resolve(pkgDir, entry)).href;
+      }
+      catch {
+        // fall through to the next ancestor
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+interface PackageJson {
+  main?: string;
+  module?: string;
+  exports?: unknown;
+}
+
+function resolveEntry(pkg: PackageJson): string | undefined {
+  const exp = pkg.exports;
+  if (exp && typeof exp === 'object' && !Array.isArray(exp)) {
+    const dot = (exp as Record<string, unknown>)['.'];
+    if (typeof dot === 'string') return dot;
+    if (dot && typeof dot === 'object' && !Array.isArray(dot)) {
+      const o = dot as Record<string, unknown>;
+      if (typeof o.import === 'string') return o.import;
+      if (typeof o.default === 'string') return o.default;
+      if (typeof o.require === 'string') return o.require;
+    }
+  }
+  if (typeof exp === 'string') return exp;
+  return pkg.module ?? pkg.main;
 }

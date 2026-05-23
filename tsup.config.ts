@@ -8,6 +8,7 @@ export default defineConfig({
     'build/index': 'src/build/index.ts',
     'cli/index': 'src/cli/index.ts',
     'testing/index': 'src/testing/index.ts',
+    'testing/register': 'src/testing/register.ts',
   },
   format: 'esm',
   dts: false,

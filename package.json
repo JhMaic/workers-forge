@@ -43,6 +43,10 @@
       "types": "./dist/testing/index.d.ts",
       "import": "./dist/testing/index.js"
     },
+    "./testing/register": {
+      "types": "./dist/testing/register.d.ts",
+      "import": "./dist/testing/register.js"
+    },
     "./tsconfig": "./tsconfig/worker.json"
   },
   "main": "./dist/index.js",

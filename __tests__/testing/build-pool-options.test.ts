@@ -20,69 +20,45 @@ describe('buildPoolOptions', () => {
     await rm(outDir, { recursive: true, force: true });
   });
 
-  it('returns wrangler.configPath pointing at the worker under test', async () => {
+  it('returns mainConfigPath for the worker under test', async () => {
     await writeWranglerConfig(join(outDir, 'gateway'), {
       name: 'pfx-gateway',
       main: '../../src/modules/gateway/index.ts',
-      compatibility_date: '2026-04-08',
     });
 
-    const opts = await buildPoolOptions({ outDir, worker: 'gateway' });
+    const d = await buildPoolOptions({ outDir, worker: 'gateway' });
 
-    expect(opts.wrangler.configPath).toBe(resolve(outDir, 'gateway', 'wrangler.jsonc'));
-    expect(opts.miniflare.workers ?? []).toEqual([]);
-    expect(opts.miniflare.durableObjects).toBeUndefined();
+    expect(d.mainConfigPath).toBe(resolve(outDir, 'gateway', 'wrangler.jsonc'));
+    expect(d.siblings).toEqual([]);
+    expect(d.selfDurableObjectBinding).toBeUndefined();
   });
 
   it('throws if the worker directory is missing', async () => {
     await expect(buildPoolOptions({ outDir, worker: 'missing' })).rejects.toThrow(/Missing/);
   });
 
-  it('throws with hint if outDir exists but worker dir is absent', async () => {
-    await writeWranglerConfig(join(outDir, 'other'), {
-      name: 'pfx-other',
-      main: 'main.ts',
-    });
-
-    await expect(buildPoolOptions({ outDir, worker: 'gateway' })).rejects.toThrow(/Missing/);
-  });
-
-  it('registers sibling workers referenced via service bindings', async () => {
+  it('lists siblings referenced via service bindings', async () => {
     await writeWranglerConfig(join(outDir, 'api'), {
       name: 'pfx-api',
       main: '../../src/api.ts',
-      compatibility_date: '2026-04-08',
-      compatibility_flags: ['nodejs_compat'],
       services: [{ binding: 'DATA', service: 'pfx-data' }],
     });
     await writeWranglerConfig(join(outDir, 'data'), {
       name: 'pfx-data',
       main: '../../src/data.ts',
-      compatibility_date: '2026-04-08',
-      compatibility_flags: ['nodejs_compat'],
-      kv_namespaces: [{ binding: 'KV', id: 'kv-123' }],
-      vars: { APP_ENV: 'test' },
     });
 
-    const opts = await buildPoolOptions({ outDir, worker: 'api' });
+    const d = await buildPoolOptions({ outDir, worker: 'api' });
 
-    expect(opts.miniflare.workers).toHaveLength(1);
-    const aux = opts.miniflare.workers![0]!;
-    expect(aux.name).toBe('pfx-data');
-    expect(aux.modules).toBe(true);
-    expect(aux.modulesRoot).toBe(resolve(outDir, 'data'));
-    expect(aux.scriptPath).toBe(resolve(outDir, 'data', '../../src/data.ts'));
-    expect(aux.compatibilityDate).toBe('2026-04-08');
-    expect(aux.compatibilityFlags).toEqual(['nodejs_compat']);
-    expect(aux.kvNamespaces).toEqual({ KV: 'kv-123' });
-    expect(aux.bindings).toEqual({ APP_ENV: 'test' });
+    expect(d.siblings).toEqual([
+      { configPath: resolve(outDir, 'data', 'wrangler.jsonc'), deployedName: 'pfx-data' },
+    ]);
   });
 
-  it('registers a sibling DO host script referenced via durable_objects', async () => {
+  it('lists a sibling DO host script referenced via durable_objects', async () => {
     await writeWranglerConfig(join(outDir, 'gateway'), {
       name: 'do-demo-gateway',
       main: '../../src/modules/gateway/index.ts',
-      compatibility_date: '2026-04-08',
       durable_objects: {
         bindings: [{ name: 'COUNTER', class_name: 'Counter', script_name: 'do-demo-counter' }],
       },
@@ -90,55 +66,64 @@ describe('buildPoolOptions', () => {
     await writeWranglerConfig(join(outDir, 'counter'), {
       name: 'do-demo-counter',
       main: 'entry.ts',
-      compatibility_date: '2026-04-08',
       migrations: [{ tag: 'v1', new_sqlite_classes: ['Counter'] }],
     });
 
-    const opts = await buildPoolOptions({ outDir, worker: 'gateway' });
+    const d = await buildPoolOptions({ outDir, worker: 'gateway' });
 
-    expect(opts.miniflare.workers).toHaveLength(1);
-    const aux = opts.miniflare.workers![0]!;
-    expect(aux.name).toBe('do-demo-counter');
-    expect(aux.scriptPath).toBe(resolve(outDir, 'counter', 'entry.ts'));
-    expect(opts.miniflare.durableObjects).toBeUndefined();
+    expect(d.siblings).toEqual([
+      { configPath: resolve(outDir, 'counter', 'wrangler.jsonc'), deployedName: 'do-demo-counter' },
+    ]);
+    expect(d.selfDurableObjectBinding).toBeUndefined();
   });
 
-  it('injects a self-binding when the worker under test is a DO host', async () => {
+  it('injects a self-binding when the worker under test is a DO host (sqlite)', async () => {
     await writeWranglerConfig(join(outDir, 'counter'), {
       name: 'do-demo-counter',
       main: 'entry.ts',
-      compatibility_date: '2026-04-08',
       migrations: [{ tag: 'v1', new_sqlite_classes: ['Counter'] }],
     });
 
-    const opts = await buildPoolOptions({ outDir, worker: 'counter' });
+    const d = await buildPoolOptions({ outDir, worker: 'counter' });
 
-    expect(opts.miniflare.durableObjects).toEqual({ COUNTER: 'Counter' });
-    expect(opts.miniflare.workers ?? []).toEqual([]);
+    expect(d.selfDurableObjectBinding).toEqual({ binding: 'COUNTER', className: 'Counter' });
+    expect(d.siblings).toEqual([]);
   });
 
-  it('derives the self-binding class name from the worker short name', async () => {
+  it('injects a self-binding for legacy kv-backed DOs (new_classes)', async () => {
+    await writeWranglerConfig(join(outDir, 'legacy'), {
+      name: 'do-legacy',
+      main: 'entry.ts',
+      migrations: [{ tag: 'v1', new_classes: ['Legacy'] }],
+    });
+
+    const d = await buildPoolOptions({ outDir, worker: 'legacy' });
+
+    expect(d.selfDurableObjectBinding).toEqual({ binding: 'LEGACY', className: 'Legacy' });
+  });
+
+  it('derives the self-binding class name from a kebab/snake worker name', async () => {
     await writeWranglerConfig(join(outDir, 'user-session'), {
       name: 'do-demo-user-session',
       main: 'entry.ts',
       migrations: [{ tag: 'v1', new_sqlite_classes: ['UserSession'] }],
     });
 
-    const opts = await buildPoolOptions({ outDir, worker: 'user-session' });
+    const d = await buildPoolOptions({ outDir, worker: 'user-session' });
 
-    expect(opts.miniflare.durableObjects).toEqual({ USERSESSION: 'UserSession' });
+    expect(d.selfDurableObjectBinding).toEqual({ binding: 'USERSESSION', className: 'UserSession' });
   });
 
-  it('does not list the worker under test as its own auxiliary', async () => {
+  it('does not list the worker under test as its own sibling', async () => {
     await writeWranglerConfig(join(outDir, 'self'), {
       name: 'pfx-self',
       main: 'main.ts',
       services: [{ binding: 'ME', service: 'pfx-self' }],
     });
 
-    const opts = await buildPoolOptions({ outDir, worker: 'self' });
+    const d = await buildPoolOptions({ outDir, worker: 'self' });
 
-    expect(opts.miniflare.workers ?? []).toEqual([]);
+    expect(d.siblings).toEqual([]);
   });
 
   it('ignores service bindings that point at external (non-sibling) workers', async () => {
@@ -148,20 +133,8 @@ describe('buildPoolOptions', () => {
       services: [{ binding: 'EXT', service: 'some-external-worker' }],
     });
 
-    const opts = await buildPoolOptions({ outDir, worker: 'api' });
+    const d = await buildPoolOptions({ outDir, worker: 'api' });
 
-    expect(opts.miniflare.workers ?? []).toEqual([]);
-  });
-
-  it('handles legacy kv-backed DOs via new_classes', async () => {
-    await writeWranglerConfig(join(outDir, 'legacy'), {
-      name: 'do-legacy',
-      main: 'entry.ts',
-      migrations: [{ tag: 'v1', new_classes: ['Legacy'] }],
-    });
-
-    const opts = await buildPoolOptions({ outDir, worker: 'legacy' });
-
-    expect(opts.miniflare.durableObjects).toEqual({ LEGACY: 'Legacy' });
+    expect(d.siblings).toEqual([]);
   });
 });
