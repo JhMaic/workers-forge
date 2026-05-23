@@ -29,4 +29,14 @@ describe('discoverModuleFiles', () => {
     expect(files.length).toBe(1);
     expect(files[0]).toMatch(/^(\/|[A-Z]:)/);
   });
+
+  it('drops .d.ts files even when a broad pattern would match them', async () => {
+    const files = await discoverModuleFiles({
+      cwd: FIXTURE_ROOT,
+      modules: ['c/*.ts'],
+    });
+    const rel = files.map(f => f.replace(FIXTURE_ROOT, ''));
+    expect(rel).toEqual([expect.stringMatching(/[/\\]c[/\\]index\.ts$/)]);
+    expect(rel.some(f => f.endsWith('.d.ts'))).toBe(false);
+  });
 });

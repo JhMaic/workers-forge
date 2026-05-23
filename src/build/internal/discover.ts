@@ -13,5 +13,12 @@ export async function discoverModuleFiles(opts: DiscoverOptions): Promise<string
     absolute: false,
     gitignore: false,
   });
-  return matches.map(m => resolve(opts.cwd, m)).sort();
+  // Always drop `.d.ts` files — they're type-only and have no runtime default
+  // export to validate. Users who set custom module globs like `src/*.ts` will
+  // otherwise pick up ambient declarations (e.g. an env.d.ts beside their
+  // worker modules) and trip validation.
+  return matches
+    .filter(m => !m.endsWith('.d.ts'))
+    .map(m => resolve(opts.cwd, m))
+    .sort();
 }
