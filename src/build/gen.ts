@@ -6,6 +6,7 @@ import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { WORKER_NAME_MAX_LEN, WORKER_NAME_REGEX } from '../runtime/constants';
 import { getWorkerMeta, isDefinedWorker } from '../runtime/define';
+import { getDurableObjectMeta, isDefinedDurableObject } from '../runtime/durable-object';
 import { envs } from '../runtime/envs';
 import { defaultBaseConfig } from './base-config';
 import { discoverModuleFiles } from './internal/discover';
@@ -122,6 +123,11 @@ export async function gen(opts: GenOptions): Promise<GenResult> {
       }
       if (isDefinedWorker(imported.default)) {
         const m = getWorkerMeta(imported.default);
+        if (typeof m.name === 'string' && m.name.length > 0)
+          siblings.add(m.name);
+      }
+      else if (isDefinedDurableObject(imported.default)) {
+        const m = getDurableObjectMeta(imported.default);
         if (typeof m.name === 'string' && m.name.length > 0)
           siblings.add(m.name);
       }
